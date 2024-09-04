@@ -14,9 +14,10 @@
 
 namespace balancer
 {
-
+#if 0
 using ServiceId = std::uint16_t;
 using RealId = std::uint16_t;
+using LayoutId = std::uint16_t;
 using LayoutHash = std::uint16_t;
 using QueryHash = std::uint32_t;
 using Weight = std::uint16_t;
@@ -59,6 +60,7 @@ class Service
 	static constexpr auto SERVICE_SIZE = std::numeric_limits<LayoutHash>::max();
 	static constexpr auto SEGMENT_WIDTH = 8;
 	static constexpr auto ROLLS_PER_SEGMENT = SEGMENT_WIDTH / 2;
+	static constexpr auto ROLLS_PER_REAL = SERVICE_SIZE / REALS_MAX;
 	static constexpr auto SEED = 42;
 	static constexpr LayoutHash STARTING_ROLL = 1;
 	bool running_ = false;
@@ -67,17 +69,17 @@ class Service
 	std::array<RealId, SERVICE_SIZE> reference_ = {};
 	std::array<RealId, SERVICE_SIZE> lookup_;
 
-	std::array<RealSegments, REALS_MAX> segs_;
+	std::array<RealSegments, REALS_MAX> segments_;
 
-	std::map<RealId, std::size_t> segment_chains_mapping_;
-	std::set<std::size_t> unused_segment_chains_idxs_;
+	std::map<RealId, LayoutId> segment_chains_mapping_;
+	std::map<LayoutId, RealId> realids_mapping_;
+	std::set<LayoutId> unused_segment_chains_idxs_;
 
-	std::map<RealId, RealSegments> segments_;
 	std::map<RealId, Weight> config_;
 
 	void OvercastShadow(RealId darker, RealId shadow, LayoutHash start)
 	{
-		while ((lookup_[start] == shadow) && (heads_[start] != shadow))
+		while ((lookup_[start] == shadow) && (realids_mapping_[heads_[start].value()] != shadow))
 		{
 			start = SetSegment(darker, start);
 		}
@@ -105,7 +107,7 @@ class Service
 
 	void EnableSegment(LayoutHash head)
 	{
-		auto id = heads_[head].value();
+		auto id = realids_mapping_.at(heads_[head].value()); // TODO
 		auto shadow = lookup_[head];
 		head = SetSegment(id, head);
 		OvercastShadow(id, shadow, head);
@@ -166,20 +168,17 @@ class Service
 		}
 	}
 
-	std::size_t PickHeads(const RealsConfig& reals)
+	std::size_t PickHeads()
 	{
 		std::size_t holes{};
-		auto segments_per_real = SERVICE_SIZE / reals.size();
-		std::cout << "segments_per_real: " << segments_per_real << std::endl;
 		std::mt19937 engine(SEED);
 		std::uniform_int_distribution<LayoutHash> uniform(0, std::numeric_limits<LayoutHash>::max() - 1);
 		LayoutHash roll;
 
-		for (std::size_t i = 0; i < segments_per_real; ++i)
+		for (std::size_t r = 0; r < ROLLS_PER_REAL; ++r)
 		{
-			for (auto [id, weight] : reals)
+			for (LayoutId id = 0; id < REALS_MAX; ++id)
 			{
-				(void)weight;
 				roll = uniform(engine);
 				if (!heads_[roll])
 				{
@@ -214,6 +213,11 @@ class Service
 	{
 	}
 
+	void InitWeights(std::map<RealId, Weight> reals)
+	{
+
+	}
+
 public:
 	void UpdateWeights(std::map<RealId, Weight>&& changes)
 	{
@@ -223,11 +227,11 @@ public:
 	        weight_norm_{Norm(reals)},
 	        heads_{std::nullopt}
 	{
-		std::size_t holes = PickHeads(reals);
+		std::size_t holes = PickHeads();
 		FillTails();
 		std::cout << "Layout done, " << holes << " holes." << std::endl;
 		std::copy(reference_.begin(), reference_.end(), lookup_.begin());
-		UpdateWeights(reals);
+		InitWeights(reals);
 	}
 
 	RealId Lookup(LayoutHash hash) const
@@ -259,5 +263,7 @@ public:
 		return m;
 	}
 };
+
+#endif
 
 } // namespace balancer

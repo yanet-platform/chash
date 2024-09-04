@@ -3,5 +3,6 @@ project('balancer', 'cpp', default_options: [
 												'-g=true',
 												'-O0=true'
 											])
-sources = files('main.cpp')
+sources = files('main.cpp',
+									  'common/Crc32.cpp')
 executable('demo', sources)

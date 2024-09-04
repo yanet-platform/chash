@@ -1,15 +1,16 @@
 #include <iostream>
 
 #include "balancer.h"
+#include "salty_rings.h"
 
-template <typename T, typename U>
-std::ostream& operator<<(std::ostream& out, const typename std::pair<T,U>& val)
+template<typename T, typename U>
+std::ostream& operator<<(std::ostream& out, const typename std::pair<T, U>& val)
 {
 	out << "{" << val.first << ", " << val.second << '}';
 	return out;
 }
 
-template <typename T>
+template<typename T>
 std::ostream& operator<<(std::ostream& out, const std::vector<T>& v)
 {
 	out << "{ ";
@@ -19,7 +20,7 @@ std::ostream& operator<<(std::ostream& out, const std::vector<T>& v)
 	}
 	if (v.size() > 1)
 	{
-		for (auto e = std::next(v.begin()), end = v.end(); e != end ; ++e)
+		for (auto e = std::next(v.begin()), end = v.end(); e != end; ++e)
 		{
 			out << ", " << *e;
 		}
@@ -28,7 +29,7 @@ std::ostream& operator<<(std::ostream& out, const std::vector<T>& v)
 	return out;
 }
 
-template <typename T, typename U>
+template<typename T, typename U>
 std::ostream& operator<<(std::ostream& out, const std::map<T, U>& m)
 {
 	out << "{ ";
@@ -38,7 +39,7 @@ std::ostream& operator<<(std::ostream& out, const std::map<T, U>& m)
 	}
 	if (m.size() > 1)
 	{
-		for (auto e = std::next(m.begin()), end = m.end(); e != end ; ++e)
+		for (auto e = std::next(m.begin()), end = m.end(); e != end; ++e)
 		{
 			out << ", " << *e;
 		}
@@ -50,14 +51,10 @@ std::ostream& operator<<(std::ostream& out, const std::map<T, U>& m)
 int main(void)
 {
 	std::cout << "Demo start." << std::endl;
-	std::vector<std::pair<std::uint16_t, std::uint16_t>> reals = {
-		{1, 10}, {3, 20}, {5, 1}, {7, 25}
-	};
+	std::map<std::uint32_t, balancer::Weight> reals = {
+	        {1, 10}, {3, 20}, {5, 1}, {7, 25}};
 	std::cout << reals << std::endl;
-	balancer::Service svc(reals);
-	std::cout << "layout:" << svc.Reference() << std::endl;
-
-	std::cout << "lookup:" << svc.Layout() << std::endl;
+	balancer::NonConsistentRing<8096, uint32_t> salty(reals);
 
 	return 0;
 }
