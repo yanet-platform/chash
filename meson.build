@@ -1,7 +1,6 @@
 project('balancer', 'cpp', default_options: [
 												'cpp_std=c++17',
-												'-g=true',
-												'-O0=true'
+												'cpp_args=-g -O0'
 											])
 sources = files('main.cpp',
 									  'common/Crc32.cpp')
