@@ -44,8 +44,9 @@ public:
 private:
 	using RealId = std::uint16_t;
 	using Key = std::uint32_t;
-	static constexpr auto lookup_size = 1 << (LookupBits - 1);
-	static constexpr Key lookup_mask = lookup_size;
+	using Index = Key;
+	static constexpr auto lookup_size = 1 << LookupBits;
+	static constexpr Index lookup_mask = lookup_size;
 	/* Real indices are not consistent between different balancers. More over
 	 * Real that was was removed from config is not guaranteed to get the same
 	 * index.
@@ -55,10 +56,16 @@ private:
 	std::vector<RealId> lookup_;
 	std::vector<bool> enabled_;
 
+	std::size_t Fair()
+	{
+		return lookup_.size() / to_real_.size();
+	}
+
 	void UpdateWeight(RealId id, Weight weight)
 	{
 		RealInfo& info = info_.at(id);
-		std::size_t segments_target = weight * info.indices.size() / MaxWeight;
+		std::size_t segments_target = std::min(weight * Fair() / MaxWeight, info.indices.size());
+		std::cout << to_real_[id] << ' ' << segments_target << '\n';
 		if (segments_target < info.enabled)
 		{
 			while (info.enabled > segments_target)
@@ -73,6 +80,16 @@ private:
 				EnableSegment(id);
 			}
 		}
+	}
+
+	RealId DifferentLeft(Index pos)
+	{
+		RingIterator it{lookup_.size(), pos};
+		while (lookup_[it] == lookup_[pos])
+		{
+			--it;
+		}
+		return lookup_[it];
 	}
 
 	void DisableSegment(RealId id)
@@ -106,17 +123,18 @@ private:
 
 public:
 	Combined(const std::map<Real, Weight>& reals, std::size_t uwtd_count) :
+	        lookup_(lookup_size, std::numeric_limits<RealId>::max()),
 	        enabled_(lookup_size, true)
 	{
 		lookup_.resize(lookup_size);
 
 		std::unordered_map<Real, RealId> to_index;
 		std::size_t i = 0;
-		for (auto& [real, _] : reals)
+		for (auto& [real, weight] : reals)
 		{
-			(void)_;
 			to_index[real] = i;
 			to_real_[i] = real;
+			info_[i].desired = weight;
 			++i;
 		}
 
@@ -178,20 +196,20 @@ public:
 
 	void Report()
 	{
-		std::unordered_map<RealId, Key> dist;
+		std::unordered_map<RealId, Index> dist;
 		for (auto id : lookup_)
 		{
 			++dist[id];
 		}
-		Key norm = std::numeric_limits<Key>::max();
+		Index norm = std::numeric_limits<Index>::max();
 		for (auto& [_, count] : dist)
 		{
 			norm = std::min(norm, count);
 		}
+
 		std::cout << "Norm: " << norm << "\n";
-		std::int64_t fair = lookup_.size() / info_.size();
-		std::cout << "fair: " << fair << '\n';
-		std::cout << "Id     Alloc   Active   Enabled   \%Active  \%Enabled Normalized\n";
+		std::cout << "fair: " << Fair() << '\n';
+		std::cout << "Id     Alloc   Active   Enabled   \%Active  \%Enabled Normalized Target\n";
 		for (auto& [id, info] : info_)
 		{
 			std::cout << std::setw(6) << std::left << to_real_[id] << " "
@@ -199,7 +217,43 @@ public:
 			          << std::setw(8) << std::left << dist[id] << " (" << std::setw(7) << std::left << info.enabled << ") "
 			          << std::setw(8) << std::left << static_cast<double>(dist[id]) * 100.0 / info.indices.size()
 			          << " (" << std::setw(5) << std::left << std::fixed << std::setprecision(1) << static_cast<double>(info.enabled) * 100.0 / info.indices.size() << ")  "
-			          << std::setw(5) << std::left << static_cast<double>(dist[id]) / norm << "\n";
+			          << std::setw(5) << std::left << static_cast<double>(dist[id]) / norm
+			          << std::setw(5) << std::left << static_cast<int>(info_.at(id).desired)
+			          << "\n";
+		}
+	}
+
+	void ReportFrag()
+	{
+		using SegLength = Index;
+		std::vector<std::map<SegLength, std::size_t>> r(info_.size());
+		Index i = 0;
+		for (; !enabled_[i] && i < lookup_.size(); ++i)
+			;
+		RingIterator it{lookup_.size(), i};
+		RealId tint = lookup_[it];
+		Index len = 1;
+		for (Index i = 0, e = lookup_.size(); i < e; ++i, ++it)
+		{
+			if (lookup_[it] == tint)
+			{
+				++len;
+			}
+			else
+			{
+				++r[tint][len];
+				tint = lookup_[it];
+				len = 1;
+			}
+		}
+		for (RealId i = 0; i < r.size(); ++i)
+		{
+			std::cout << std::setw(6) << std::left << to_real_[i];
+			for (auto& [l, cnt] : r[i])
+			{
+				std::cout << ' ' << l << 'x' << cnt;
+			}
+			std::cout << '\n';
 		}
 	}
 };

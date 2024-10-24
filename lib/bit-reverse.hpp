@@ -39,7 +39,7 @@ inline constexpr std::uint32_t FractionalBitReverse(std::uint32_t x)
 template<uint8_t Bits>
 class BitReverseSequence
 {
-	using size_t = std::uint32_t;
+	using size_t = std::size_t;
 	class Iterator
 	{
 		size_t idx_;

@@ -5,7 +5,7 @@
 #include <set>
 #include <vector>
 
-#include "common/Crc32.h"
+#include "../common/Crc32.h"
 
 namespace balancer
 {
