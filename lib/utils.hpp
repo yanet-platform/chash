@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <vector>
 
 class RingIterator
 {
@@ -32,7 +33,7 @@ class RingIterator
 
 	RingIterator& Advance(int i)
 	{
-		index_ = (size_ + index_ + i % size_) % size_;
+		index_ = (size_ + index_ + i) % size_;
 		return *this;
 	}
 
