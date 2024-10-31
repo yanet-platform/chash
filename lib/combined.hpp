@@ -100,16 +100,6 @@ private:
 		}
 	}
 
-	RealId DifferentLeft(Index pos)
-	{
-		RingIterator it{lookup_.size(), pos};
-		while (lookup_[it] == lookup_[pos])
-		{
-			--it;
-		}
-		return lookup_[it];
-	}
-
 	/* @brief Instead of disabling segments one by one when lookup ring is
 	 * created, this function marks marks all the positions being disabled
 	 * and then loops throgh lookup ring recoloring according to current state
