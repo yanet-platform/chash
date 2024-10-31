@@ -69,7 +69,7 @@ private:
 		return lookup_.size() / to_real_.size();
 	}
 
-	std::size_t HardClampedSegments(RealId id, Weight weight)
+	std::size_t HardClampedCellCount(RealId id, Weight weight)
 	{
 		return weight * segments_per_weight_unit_;
 	}
@@ -83,7 +83,7 @@ private:
 	{
 		auto& info = info_.at(id);
 		info.desired = weight;
-		std::size_t segments_target = HardClampedSegments(id, weight);
+		std::size_t segments_target = HardClampedCellCount(id, weight);
 		if (segments_target < info.enabled)
 		{
 			while (info.enabled > segments_target)
@@ -110,42 +110,40 @@ private:
 		return lookup_[it];
 	}
 
-#if TODO
 	/* @brief Instead of disabling segments one by one when lookup ring is
 	 * created, this function marks marks all the positions being disabled
 	 * and then loops throgh lookup ring recoloring according to current state
 	 */
 	void InitWeights(const std::map<Real, Weight>& reals)
 	{
-		std::size_t start{};
-		while (!enabled_[start])
-		{
-			++start;
-		}
-		RingIterator i{lookup_.size(), start};
-		RealId tint = lookup_[i];
-		for (std::size_t count = lookup_.size(); count != 0; --count, ++i)
-		{
-			if (enabled_[i])
-			{
-				tint = lookup_[i];
-			}
-			else
-			{
-				lookup_[i] = tint;
-			}
-		}
-
 		for (auto& [real, weight] : reals)
 		{
 			auto& info = info_.at(to_id_.at(real));
-			while (info segments > HardClampedSegments(real, weight))
+			while (info.enabled > HardClampedCellCount(to_id_.at(real), weight))
 			{
+				--info.enabled;
+				enabled_.at(info.indices.at(info.enabled)) = false;
+			}
+		}
 
+		std::size_t i{};
+		while (!enabled_.at(i))
+		{
+			++i;
+		}
+		RealId tint = lookup_.at(i);
+		for (std::size_t count = lookup_.size(); count != 0; --count, i = NextInRing(lookup_.size(), i))
+		{
+			if (enabled_.at(i))
+			{
+				tint = lookup_.at(i);
+			}
+			else
+			{
+				lookup_.at(i) = tint;
 			}
 		}
 	};
-#endif
 
 	std::unordered_map<RealId, Index> debug;
 	/* @brief Marks the last enabled segment in the chain of segmentsfor \id as
@@ -248,14 +246,14 @@ public:
 
 		std::cout << "Colored lookup ring." << std::endl;
 
+#if OLD
 		for (const auto& [real, weight] : reals)
 		{
 			UpdateWeight(to_id_[real], weight);
 		}
-		
-#if TODO
-		InitWeights(reals);
 #endif
+
+		InitWeights(reals);
 		std::cout << "Initialized weights." << std::endl;
 	}
 
