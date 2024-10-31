@@ -30,68 +30,8 @@ inline constexpr std::uint32_t BitReverse(std::uint32_t x)
 }
 
 template<uint8_t Bits>
-inline constexpr std::uint32_t FractionalBitReverse(std::uint32_t x)
+inline constexpr std::uint32_t ReverseBits(std::uint32_t x)
 {
 	auto y = BitReverse(x) >> (32 - Bits);
 	return y;
 }
-
-template<uint8_t Bits>
-class BitReverseSequence
-{
-	using size_t = std::size_t;
-	class Iterator
-	{
-		size_t idx_;
-		bool end_ = false;
-
-	public:
-		Iterator(size_t idx) :
-		        idx_{idx} {}
-
-		size_t operator*()
-		{
-			return FractionalBitReverse<Bits>(idx_);
-		}
-
-		Iterator& operator++()
-		{
-			if (idx_ == std::numeric_limits<size_t>::max() >> (std::numeric_limits<size_t>::digits - Bits))
-			{
-				end_ = true;
-			}
-			else
-			{
-				idx_++;
-			}
-			return *this;
-		}
-
-		bool operator==(const Iterator& other)
-		{
-			return (end_ && other.end_) || (!end_ && !other.end_ && idx_ == other.idx_);
-		}
-
-		bool operator!=(const Iterator& other)
-		{
-			return !(*this == other);
-		}
-
-		static Iterator end()
-		{
-			Iterator i{0};
-			i.end_ = true;
-			return i;
-		}
-	};
-
-public:
-	Iterator begin()
-	{
-		return Iterator(0);
-	}
-	Iterator end()
-	{
-		return Iterator::end();
-	}
-};

@@ -213,12 +213,9 @@ public:
 		// Fill lookup ring choosing for every next index middle of yet unfilled range
 		auto seql = [&]() {
 			auto n = seq();
-			// std::cout << "seq " << n << '\n';
 			return n;
 		};
-		std::set<std::size_t> seen;
-		BitReverseSequence<LookupBits> pos_seq{};
-		for (auto pos : pos_seq)
+		for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits<LookupBits>(i))
 		{
 			Real r = unweight[ridx].Match(seql());
 			RealId rid = to_id_[r];
