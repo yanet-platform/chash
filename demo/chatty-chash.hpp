@@ -1,0 +1,100 @@
+#pragma once
+#include <iomanip>
+#include <iostream>
+
+#include <chash.hpp>
+
+#include "printers.hpp"
+
+template<typename Real, std::uint8_t LookupBits>
+class ChattyChash : public balancer::Chash<Real, LookupBits>
+{
+	using Base = balancer::Chash<Real, LookupBits>;
+	using RealId = typename Base::RealId;
+	using Key = typename Base::Key;
+	using Index = typename Base::Index;
+	using Base::enabled_;
+	using Base::info_;
+	using Base::lookup_;
+	using Base::lookup_mask;
+	using Base::lookup_size;
+	using Base::segments_per_weight_unit_;
+	using Base::to_real_;
+
+public:
+	ChattyChash(const std::map<Real, balancer::Weight>& reals, std::size_t uwtd_count) :
+	        Base(reals, uwtd_count)
+	{}
+	void Report()
+	{
+		std::unordered_map<RealId, Index> dist;
+		for (auto id : Base::lookup_)
+		{
+			++dist[id];
+		}
+		Index norm = std::numeric_limits<Index>::min();
+		for (auto& [_, count] : dist)
+		{
+			norm = std::max(norm, count);
+		}
+
+		std::cout << "Max: " << norm << "\n";
+		std::cout << "Fair: " << Base::Fair() << '\n';
+		std::cout << "Id         Alloc    Active  Enabled   \%Active  \%Enabled Normalized   Target\n";
+		for (auto& [id, info] : Base::info_)
+		{
+			std::cout << std::setw(10) << std::left << to_real_[id] << " "
+			          << std::setw(8) << info_.at(id).indices.size()
+			          << std::setw(7) << std::right << dist[id]
+			          << std::setw(9) << std::right << Parenthesize(info.enabled)
+			          << std::setw(10) << std::right << std::fixed << std::setprecision(1) << static_cast<double>(dist[id]) * 100.0 / info.indices.size() << ' '
+			          << std::setw(9) << std::right << Parenthesize(std::fixed, std::setprecision(1), static_cast<double>(info.enabled) * 100.0 / info.indices.size()) << " "
+			          << std::setw(10) << std::right << static_cast<double>(dist[id]) * 100 / norm;
+			std::cout << std::setw(9) << std::right << static_cast<int>(info_.at(id).desired)
+			          << "\n";
+		}
+	}
+
+	void ReportFrag()
+	{
+		using SegLength = Index;
+		std::vector<std::map<SegLength, std::size_t>> r(info_.size());
+		Index i = 0;
+		for (; !enabled_[i] && i < lookup_.size(); ++i)
+			;
+		std::size_t cell{};
+		RealId tint = lookup_[cell];
+		Index len = 1;
+		for (Index i = 0; i < lookup_size; ++i, cell = NextRingPosition(lookup_size, cell))
+		{
+			if (lookup_[cell] == tint)
+			{
+				++len;
+			}
+			else
+			{
+				++r[tint][len];
+				tint = lookup_[cell];
+				len = 1;
+			}
+		}
+		for (RealId i = 0; i < r.size(); ++i)
+		{
+			std::cout << std::setw(10) << std::left << to_real_[i];
+			for (auto& [l, cnt] : r[i])
+			{
+				std::stringstream ss;
+				ss << l << 'x' << cnt;
+				std::cout << std::setw(7) << ss.str();
+			}
+			std::cout << '\n';
+		}
+	}
+
+	void ReportSettings()
+	{
+		std::cout << "Lookup ring size: " << lookup_size << '\n'
+		          << "Lookup mask:" << std::hex << lookup_mask << std::dec << '\n'
+		          << "Segments at 100 weight: " << segments_per_weight_unit_ * 100 << '\n';
+	}
+};

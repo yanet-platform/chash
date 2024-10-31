@@ -11,7 +11,7 @@
 
 // #include "balancer.h"
 // #include "salty_rings.h"
-#include <chash.hpp>
+#include "chatty-chash.hpp"
 
 std::map<std::string, balancer::Weight> ReadConfig(std::string path)
 {
@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
 	}
 	std::cout << "Demo start." << std::endl;
 	std::cout << std::endl;
-	balancer::Chash<std::string, 18> bal(reals, 1 << 17);
+	ChattyChash<std::string, 18> bal(reals, 1 << 17);
 
 	std::cout << "-----------------------------------------------------------\n"
 	          << "  Reals requested\n"
