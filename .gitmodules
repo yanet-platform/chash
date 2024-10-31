@@ -1,6 +1,3 @@
 [submodule "subprojects/argparse"]
 	path = subprojects/argparse
 	url = git@github.com:p-ranav/argparse.git
-[submodule "subprojects/json"]
-	path = subprojects/json
-	url = https://github.com/nlohmann/json.git
