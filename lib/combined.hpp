@@ -117,7 +117,7 @@ private:
 			++i;
 		}
 		RealId tint = lookup_.at(i);
-		for (std::size_t count = lookup_.size(); count != 0; --count, i = NextInRing(lookup_.size(), i))
+		for (std::size_t count = lookup_.size(); count != 0; --count, i = NextRingPosition(lookup_size, i))
 		{
 			if (enabled_.at(i))
 			{
@@ -141,19 +141,19 @@ private:
 	{
 		auto& donor = info_.at(id);
 		auto disable = donor.indices.at(--donor.enabled);
-		RingIterator it{lookup_.size(), disable};
+		std::size_t i{disable};
 		if (enabled_[disable])
 		{
 			++debug[id];
 			enabled_[disable] = false;
 		}
-		RealId tint = lookup_[it - 1];
+		RealId tint = lookup_[PrevRingPosition(lookup_size, i)];
 		auto& receiver = info_.at(tint);
-		for (; !enabled_[it]; ++it)
+		for (; !enabled_[i]; i = NextRingPosition(lookup_size, i))
 		{
 			receiver.actual++;
 			--donor.actual;
-			lookup_[it] = tint;
+			lookup_[i] = tint;
 		}
 	}
 
@@ -161,11 +161,11 @@ private:
 	{
 		auto& receiver = info_.at(id);
 		auto enable = receiver.indices[receiver.enabled];
-		for (RingIterator it{lookup_.size(), enable}; !enabled_[it]; ++it)
+		for (std::size_t i{enable}; !enabled_[i]; NextRingPosition(lookup_size, i))
 		{
 			++receiver.actual;
-			--info_.at(lookup_[it]).actual;
-			lookup_[it] = id;
+			--info_.at(lookup_[i]).actual;
+			lookup_[i] = id;
 		}
 		++receiver.enabled;
 	}
@@ -204,7 +204,7 @@ public:
 
 		std::cout << "Generated unweighted rings." << std::endl;
 
-		RingIterator ridx{uwtd_count};
+		std::size_t u{};
 		// Fill lookup ring choosing for every next index middle of yet unfilled range
 		auto seql = [&]() {
 			auto n = seq();
@@ -212,12 +212,12 @@ public:
 		};
 		for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits<LookupBits>(i))
 		{
-			Real r = unweight[ridx].Match(seql());
+			Real r = unweight[u].Match(seql());
 			RealId rid = to_id_[r];
 			lookup_[pos] = rid;
 			std::vector<Index>& indices = info_[rid].indices;
 			indices.push_back(pos);
-			++ridx;
+			u = NextRingPosition(unweight.size(), u);
 		}
 
 		for (auto& [real, info] : info_)
@@ -274,19 +274,19 @@ public:
 		Index i = 0;
 		for (; !enabled_[i] && i < lookup_.size(); ++i)
 			;
-		RingIterator it{lookup_.size(), i};
-		RealId tint = lookup_[it];
+		std::size_t cell{};
+		RealId tint = lookup_[cell];
 		Index len = 1;
-		for (Index i = 0, e = lookup_.size(); i < e; ++i, ++it)
+		for (Index i = 0; i < lookup_size; ++i, cell = NextRingPosition(lookup_size, cell))
 		{
-			if (lookup_[it] == tint)
+			if (lookup_[cell] == tint)
 			{
 				++len;
 			}
 			else
 			{
 				++r[tint][len];
-				tint = lookup_[it];
+				tint = lookup_[cell];
 				len = 1;
 			}
 		}
@@ -306,6 +306,7 @@ public:
 	void ReportSettings()
 	{
 		std::cout << "Lookup ring size: " << lookup_size << '\n'
+				  << "Lookup mask:" << std::hex << lookup_mask << '\n'
 		          << "Segments at 100 weight: " << segments_per_weight_unit_ * 100 << '\n';
 	}
 };

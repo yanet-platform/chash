@@ -14,13 +14,6 @@ balancer = executable(
 
 test('balancer', balancer, protocol: 'gtest')
 
-ring_iter = executable(
-	'ring-iter-unittest',
-	'test-ring-iterator.cpp',
-	dependencies: dependencies)
-
-test('ring-iterator', ring_iter, protocol: 'gtest')
-
 bit_reverse = executable(
 	'bit-reverse-unittest',
 	'test-bit-reverse.cpp',
