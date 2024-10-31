@@ -5,12 +5,6 @@
 #include <argparse/argparse.hpp>
 #include <nlohmann/json.hpp>
 
-// #include <city.h>
-
-#define DEBUG 1
-
-// #include "balancer.h"
-// #include "salty_rings.h"
 #include "chatty-chash.hpp"
 
 std::map<std::string, balancer::Weight> ReadConfig(std::string path)

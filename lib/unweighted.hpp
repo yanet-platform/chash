@@ -31,9 +31,7 @@ class Unweighted
 {
 	std::set<IdHash> hids_;
 	std::map<IdHash, Real> to_real_;
-#if DEBUG
 	Salt salt_;
-#endif
 
 	void PrintEntry(std::ostream& out, IdHash id) const
 	{
