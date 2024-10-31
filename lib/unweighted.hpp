@@ -33,11 +33,6 @@ class Unweighted
 	std::map<IdHash, Real> to_real_;
 	Salt salt_;
 
-	void PrintEntry(std::ostream& out, IdHash id) const
-	{
-		out << '{' << to_real_.at(id) << ", " << id << '}';
-	}
-
 public:
 	Unweighted(const std::vector<Real>& reals, Salt salt) :
 	        salt_{salt}
@@ -56,34 +51,6 @@ public:
 		auto e = hids_.lower_bound(hash);
 		return to_real_.at(*((e != hids_.end()) ? e : hids_.begin()));
 	}
-	template<typename R>
-	friend std::ostream& operator<<(std::ostream& o, const Unweighted<R>&);
 };
-
-template<typename Real>
-std::ostream& operator<<(std::ostream& o, const Unweighted<Real>& ring)
-{
-	std::map<Real, IdHash> to_hid;
-	for (auto& [h, r] : ring.to_real_)
-	{
-		to_hid[r] = h;
-	}
-	o << "Salt: " << ring.salt_;
-	o << " Unweighted: {";
-	auto hid = to_hid.begin();
-	auto print = [](std::ostream& o, decltype(hid) & i) {
-		o << '{' << i->first << ", " << i->second << '}';
-	};
-	print(o, hid);
-	++hid;
-	for (auto end = to_hid.end(); hid != end; ++hid)
-	{
-		o << ", ";
-		print(o, hid);
-	}
-
-	o << '}';
-	return o;
-}
 
 } // namespace balancer

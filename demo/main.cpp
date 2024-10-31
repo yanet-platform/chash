@@ -25,6 +25,33 @@ std::map<std::string, balancer::Weight> ReadConfig(std::string path)
 	return result;
 }
 
+template<typename Real>
+std::ostream& operator<<(std::ostream& o, const balancer::Unweighted<Real>& ring)
+{
+	std::map<Real, balancer::IdHash> to_hid;
+	for (auto& [h, r] : ring.to_real_)
+	{
+		to_hid[r] = h;
+	}
+	o << "Salt: " << ring.salt_;
+	o << " Unweighted: {";
+	auto hid = to_hid.begin();
+	auto print = [](std::ostream& o, decltype(hid) & i) {
+		o << '{' << i->first << ", " << i->second << '}';
+	};
+	print(o, hid);
+	++hid;
+	for (auto end = to_hid.end(); hid != end; ++hid)
+	{
+		o << ", ";
+		print(o, hid);
+	}
+
+	o << '}';
+	return o;
+}
+
+
 int main(int argc, char* argv[])
 {
 	argparse::ArgumentParser args;
