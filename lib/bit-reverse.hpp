@@ -1,6 +1,5 @@
 #pragma once
 #include <cstdint>
-#include <limits>
 
 inline constexpr std::uint8_t BitReverse(std::uint8_t x)
 {

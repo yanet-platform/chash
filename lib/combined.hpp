@@ -74,11 +74,6 @@ private:
 		return weight * segments_per_weight_unit_;
 	}
 
-	std::size_t RolledSegments(RealId id, Weight weight)
-	{
-		return weight * info_.at(id).indices.size() / MaxWeight;
-	}
-
 	void UpdateWeight(RealId id, Weight weight)
 	{
 		auto& info = info_.at(id);
@@ -232,13 +227,6 @@ public:
 		}
 
 		std::cout << "Colored lookup ring." << std::endl;
-
-#if OLD
-		for (const auto& [real, weight] : reals)
-		{
-			UpdateWeight(to_id_[real], weight);
-		}
-#endif
 
 		InitWeights(reals);
 		std::cout << "Initialized weights." << std::endl;
