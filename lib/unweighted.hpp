@@ -29,7 +29,6 @@ IdHash Hash(const std::string& data, IdHash prev)
 template<typename Real>
 class Unweighted
 {
-	std::set<IdHash> hids_;
 	std::map<IdHash, Real> to_real_;
 	Salt salt_;
 
@@ -40,16 +39,22 @@ public:
 		for (auto& real : reals)
 		{
 			auto hid = Hash(real, salt);
-			hids_.insert(hid);
 			// Real comparing greater wins collision
-			to_real_[hid] = std::max(to_real_[hid], real);
+			if (to_real_.find(hid) != to_real_.end())
+			{
+				to_real_[hid] = std::max(to_real_[hid], real);
+			}
+			else
+			{
+				to_real_[hid] = real;
+			}
 		}
 	}
 
 	Real Match(IdHash hash)
 	{
-		auto e = hids_.lower_bound(hash);
-		return to_real_.at(*((e != hids_.end()) ? e : hids_.begin()));
+		auto e = to_real_.lower_bound(hash);
+		return (e != to_real_.end()) ? e->second : to_real_.begin()->second;
 	}
 };
 
