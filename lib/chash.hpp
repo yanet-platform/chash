@@ -38,7 +38,7 @@ class Weight
 #endif
 
 template<typename Real, std::uint8_t LookupBits>
-class Combined
+class Chash
 {
 public:
 	static constexpr auto MaxWeight = 100;
@@ -171,7 +171,7 @@ private:
 	}
 
 public:
-	Combined(const std::map<Real, Weight>& reals, std::size_t uwtd_count) :
+	Chash(const std::map<Real, Weight>& reals, std::size_t uwtd_count) :
 	        lookup_(lookup_size, std::numeric_limits<RealId>::max()),
 	        enabled_(lookup_size, true)
 	{
@@ -215,7 +215,7 @@ public:
 			Real r = unweight[u].Match(seql());
 			RealId rid = to_id_[r];
 			lookup_[pos] = rid;
-			std::vector<Index>& indices = info_[rid].indices;
+			std::vector<Index>& indices = info_[rid].indices;Nex
 			indices.push_back(pos);
 			u = NextRingPosition(unweight.size(), u);
 		}
