@@ -48,7 +48,7 @@ private:
 	using Key = std::uint32_t;
 	using Index = Key;
 	static constexpr auto lookup_size = 1 << LookupBits;
-	static constexpr Index lookup_mask = lookup_size;
+	static constexpr Index lookup_mask = lookup_size - 1;
 	Index segments_per_weight_unit_ = 20;
 	/* Real indices are not consistent between different balancers. More over
 	 * Real that was was removed from config is not guaranteed to get the same
