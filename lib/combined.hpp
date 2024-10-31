@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <cmath>
 #include <iomanip>
 #include <random>
@@ -17,9 +18,10 @@ namespace balancer
 using Weight = std::uint8_t;
 static constexpr auto RNG_SEED = 42;
 
+template<typename Index>
 struct RealInfo
 {
-	std::vector<std::uint16_t> indices;
+	std::vector<Index> indices;
 	std::size_t enabled;
 	std::size_t actual;
 	Weight desired;
@@ -47,25 +49,41 @@ private:
 	using Index = Key;
 	static constexpr auto lookup_size = 1 << LookupBits;
 	static constexpr Index lookup_mask = lookup_size;
+	Index segments_per_weight_unit_ = 20;
 	/* Real indices are not consistent between different balancers. More over
 	 * Real that was was removed from config is not guaranteed to get the same
 	 * index.
 	 */
 	std::unordered_map<RealId, Real> to_real_;
-	std::map<RealId, RealInfo> info_;
+	std::unordered_map<Real, RealId> to_id_;
+
+	std::map<RealId, RealInfo<Index>> info_;
 	std::vector<RealId> lookup_;
 	std::vector<bool> enabled_;
 
+	/* @brief Returns number of segments as if they were fairly distributed
+	 * between active reals
+	 */
 	std::size_t Fair()
 	{
 		return lookup_.size() / to_real_.size();
 	}
 
+	std::size_t HardClampedSegments(RealId id, Weight weight)
+	{
+		return weight * segments_per_weight_unit_;
+	}
+
+	std::size_t RolledSegments(RealId id, Weight weight)
+	{
+		return weight * info_.at(id).indices.size() / MaxWeight;
+	}
+
 	void UpdateWeight(RealId id, Weight weight)
 	{
-		RealInfo& info = info_.at(id);
-		std::size_t segments_target = std::min(weight * Fair() / MaxWeight, info.indices.size());
-		std::cout << to_real_[id] << ' ' << segments_target << '\n';
+		auto& info = info_.at(id);
+		info.desired = weight;
+		std::size_t segments_target = HardClampedSegments(id, weight);
 		if (segments_target < info.enabled)
 		{
 			while (info.enabled > segments_target)
@@ -92,12 +110,60 @@ private:
 		return lookup_[it];
 	}
 
+#if TODO
+	/* @brief Instead of disabling segments one by one when lookup ring is
+	 * created, this function marks marks all the positions being disabled
+	 * and then loops throgh lookup ring recoloring according to current state
+	 */
+	void InitWeights(const std::map<Real, Weight>& reals)
+	{
+		std::size_t start{};
+		while (!enabled_[start])
+		{
+			++start;
+		}
+		RingIterator i{lookup_.size(), start};
+		RealId tint = lookup_[i];
+		for (std::size_t count = lookup_.size(); count != 0; --count, ++i)
+		{
+			if (enabled_[i])
+			{
+				tint = lookup_[i];
+			}
+			else
+			{
+				lookup_[i] = tint;
+			}
+		}
+
+		for (auto& [real, weight] : reals)
+		{
+			auto& info = info_.at(to_id_.at(real));
+			while (info segments > HardClampedSegments(real, weight))
+			{
+
+			}
+		}
+	};
+#endif
+
+	std::unordered_map<RealId, Index> debug;
+	/* @brief Marks the last enabled segment in the chain of segmentsfor \id as
+	 * disabled and recolors corresponding lookup position whith id that is to
+	 * immediate left. Doesn't take into account if that position is of the same
+	 * color. We rely on the fact that such occurances are comparatively rare
+	 * and the lower the target weight the rarer they become
+	 */
 	void DisableSegment(RealId id)
 	{
 		auto& donor = info_.at(id);
-		auto disable = donor.indices[--donor.enabled];
-		enabled_[disable] = false;
+		auto disable = donor.indices.at(--donor.enabled);
 		RingIterator it{lookup_.size(), disable};
+		if (enabled_[disable])
+		{
+			++debug[id];
+			enabled_[disable] = false;
+		}
 		RealId tint = lookup_[it - 1];
 		auto& receiver = info_.at(tint);
 		for (; !enabled_[it]; ++it)
@@ -126,13 +192,13 @@ public:
 	        lookup_(lookup_size, std::numeric_limits<RealId>::max()),
 	        enabled_(lookup_size, true)
 	{
-		lookup_.resize(lookup_size);
+		assert(lookup_.size() == lookup_size);
+		assert(lookup_.size() == enabled_.size());
 
-		std::unordered_map<Real, RealId> to_index;
 		std::size_t i = 0;
 		for (auto& [real, weight] : reals)
 		{
-			to_index[real] = i;
+			to_id_[real] = i;
 			to_real_[i] = real;
 			info_[i].desired = weight;
 			++i;
@@ -162,31 +228,35 @@ public:
 			// std::cout << "seq " << n << '\n';
 			return n;
 		};
-		for (auto pos : BitReverseSequence<LookupBits>{})
+		std::set<std::size_t> seen;
+		BitReverseSequence<LookupBits> pos_seq{};
+		for (auto pos : pos_seq)
 		{
-			if (pos >= lookup_size)
-				continue;
 			Real r = unweight[ridx].Match(seql());
-			RealId rid = to_index[r];
+			RealId rid = to_id_[r];
 			lookup_[pos] = rid;
-			info_[rid].indices.push_back(pos);
+			std::vector<Index>& indices = info_[rid].indices;
+			indices.push_back(pos);
 			++ridx;
 		}
 
-		std::cout << "info: ";
 		for (auto& [real, info] : info_)
 		{
 			info.enabled = info.indices.size();
-			std::cout << real << ", ";
+			info.actual = info.indices.size();
 		}
-		std::cout << '\n';
 
 		std::cout << "Colored lookup ring." << std::endl;
+
 		for (const auto& [real, weight] : reals)
 		{
-			UpdateWeight(to_index[real], weight);
+			UpdateWeight(to_id_[real], weight);
 		}
-		std::cout << "Updated weights." << std::endl;
+		
+#if TODO
+		InitWeights(reals);
+#endif
+		std::cout << "Initialized weights." << std::endl;
 	}
 
 	Real Lookup(Key idx)
@@ -201,24 +271,25 @@ public:
 		{
 			++dist[id];
 		}
-		Index norm = std::numeric_limits<Index>::max();
+		Index norm = std::numeric_limits<Index>::min();
 		for (auto& [_, count] : dist)
 		{
-			norm = std::min(norm, count);
+			norm = std::max(norm, count);
 		}
 
-		std::cout << "Norm: " << norm << "\n";
-		std::cout << "fair: " << Fair() << '\n';
-		std::cout << "Id     Alloc   Active   Enabled   \%Active  \%Enabled Normalized Target\n";
+		std::cout << "Max: " << norm << "\n";
+		std::cout << "Fair: " << Fair() << '\n';
+		std::cout << "Id         Alloc    Active  Enabled   \%Active  \%Enabled Normalized   Target\n";
 		for (auto& [id, info] : info_)
 		{
-			std::cout << std::setw(6) << std::left << to_real_[id] << " "
-			          << std::setw(8) << std::left << info_.at(id).indices.size()
-			          << std::setw(8) << std::left << dist[id] << " (" << std::setw(7) << std::left << info.enabled << ") "
-			          << std::setw(8) << std::left << static_cast<double>(dist[id]) * 100.0 / info.indices.size()
-			          << " (" << std::setw(5) << std::left << std::fixed << std::setprecision(1) << static_cast<double>(info.enabled) * 100.0 / info.indices.size() << ")  "
-			          << std::setw(5) << std::left << static_cast<double>(dist[id]) / norm
-			          << std::setw(5) << std::left << static_cast<int>(info_.at(id).desired)
+			std::cout << std::setw(10) << std::left << to_real_[id] << " "
+			          << std::setw(8) << info_.at(id).indices.size()
+			          << std::setw(7) << std::right << dist[id]
+			          << std::setw(9) << std::right << Parenthesize(info.enabled)
+			          << std::setw(10) << std::right << std::fixed << std::setprecision(1) << static_cast<double>(dist[id]) * 100.0 / info.indices.size() << ' '
+			          << std::setw(9) << std::right << Parenthesize(std::fixed, std::setprecision(1), static_cast<double>(info.enabled) * 100.0 / info.indices.size()) << " "
+			          << std::setw(10) << std::right << static_cast<double>(dist[id]) * 100 / norm;
+			std::cout << std::setw(9) << std::right << static_cast<int>(info_.at(id).desired)
 			          << "\n";
 		}
 	}
@@ -248,13 +319,21 @@ public:
 		}
 		for (RealId i = 0; i < r.size(); ++i)
 		{
-			std::cout << std::setw(6) << std::left << to_real_[i];
+			std::cout << std::setw(10) << std::left << to_real_[i];
 			for (auto& [l, cnt] : r[i])
 			{
-				std::cout << ' ' << l << 'x' << cnt;
+				std::stringstream ss;
+				ss << l << 'x' << cnt;
+				std::cout << std::setw(7) << ss.str();
 			}
 			std::cout << '\n';
 		}
+	}
+
+	void ReportSettings()
+	{
+		std::cout << "Lookup ring size: " << lookup_size << '\n'
+		          << "Segments at 100 weight: " << segments_per_weight_unit_ * 100 << '\n';
 	}
 };
 

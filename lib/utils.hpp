@@ -2,6 +2,11 @@
 #include <cstdint>
 #include <vector>
 
+std::size_t NextInRing(std::size_t ring_size, std::size_t pos)
+{
+	return (pos + ring_size + 1) % ring_size;
+}
+
 class RingIterator
 {
 	std::size_t index_ = 0;

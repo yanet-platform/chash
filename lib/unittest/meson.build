@@ -21,3 +21,9 @@ ring_iter = executable(
 
 test('ring-iterator', ring_iter, protocol: 'gtest')
 
+bit_reverse = executable(
+	'bit-reverse-unittest',
+	'test-bit-reverse.cpp',
+	dependencies: dependencies)
+
+test('bit-reverse', bit_reverse, protocol: 'gtest')

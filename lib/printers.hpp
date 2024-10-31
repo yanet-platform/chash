@@ -3,6 +3,7 @@
 #include <tuple>
 #include <unordered_map>
 #include <vector>
+#include <sstream>
 
 class Embrace
 {
@@ -18,6 +19,16 @@ public:
 		os_ << '}';
 	}
 };
+
+template<typename...Args>
+std::string Parenthesize(Args&&...args)
+{
+	std::stringstream ss;
+	ss << '(';
+	(ss << ... << args);
+	ss << ')';
+	return ss.str();
+}
 
 template<typename T>
 void Print(const T& x)

@@ -40,4 +40,15 @@ TEST(RingIter, Left)
 	ASSERT_TRUE(j - 6 == 35);
 }
 
+TEST(RingIter, Increment)
+{
+	RingIterator j{42, 5};
+	RingIterator k{42, 5};
+	for(std::size_t i = 5; i < 42 + 5; ++i, ++j, k++)
+	{
+		ASSERT_TRUE(i % 42 == j);
+		ASSERT_TRUE(i % 42 == k);
+	}
+}
+
 }
