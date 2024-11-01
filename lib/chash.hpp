@@ -18,7 +18,7 @@ static constexpr auto RNG_SEED = 42;
 template<typename Index>
 struct RealInfo
 {
-	std::vector<Index> indices;
+	std::vector<Index> heads;
 	std::size_t enabled;
 	std::size_t actual;
 	Weight desired;
@@ -66,16 +66,23 @@ protected:
 		return lookup_.size() / to_real_.size();
 	}
 
-	std::size_t HardClampedCellCount(RealId id, Weight weight)
+	/* @brief returns cell count for \id corresponding to \weight. Due to
+	 * random nature of cell distribution between reals we cap cell count
+	 * for real at a value that is available to every real
+	 */
+	std::size_t ClampedCellCount(RealId id, Weight weight)
 	{
 		return weight * slices_per_weight_unit_;
 	}
 
+	/* @brief disables/enables \id slices one by one until the /weight requirement
+	 * is met
+	 */
 	void UpdateWeight(RealId id, Weight weight)
 	{
 		auto& info = info_.at(id);
 		info.desired = weight;
-		std::size_t slices_target = HardClampedCellCount(id, weight);
+		std::size_t slices_target = ClampedCellCount(id, weight);
 		if (slices_target < info.enabled)
 		{
 			while (info.enabled > slices_target)
@@ -94,14 +101,14 @@ protected:
 
 	/* @brief Instead of disabling slices one by one when lookup ring is
 	 * created, this function marks marks all the positions being disabled
-	 * and then loops throgh lookup ring recoloring according to current state
+	 * and then loops throgh lookup ring recoloring according to current state.
 	 */
 	void InitWeights(const std::map<Real, Weight>& reals)
 	{
 		for (auto& [real, weight] : reals)
 		{
 			auto& info = info_.at(to_id_.at(real));
-			while (info.enabled > HardClampedCellCount(to_id_.at(real), weight))
+			while (info.enabled > ClampedCellCount(to_id_.at(real), weight))
 			{
 				--info.enabled;
 				enabled_.at(info.indices.at(info.enabled)) = false;
@@ -128,16 +135,17 @@ protected:
 	};
 
 	std::unordered_map<RealId, Index> debug;
-	/* @brief Marks the last enabled slice in the chain of slices for \id as
-	 * disabled and recolors corresponding lookup position whith id that is to
-	 * immediate left. Doesn't take into account if that position is of the same
-	 * color. We rely on the fact that such occurances are comparatively rare
-	 * and the lower the target weight the rarer they become
+	/* @brief Marks the last enabled cell in the chain of head cells for \id as
+	 * disabled and removes slice from lookup starting at the cell position.
+	 * this is done by combining it with the slice to immediate left. Doesn't
+	 * take into account if that slice is of the same color. We rely on the
+	 * fact that such occurances are comparatively rare and the lower the
+	 * target weight the rarer they become.
 	 */
 	void DisableSlice(RealId id)
 	{
 		auto& donor = info_.at(id);
-		auto disable = donor.indices.at(--donor.enabled);
+		auto disable = donor.heads.at(--donor.enabled);
 		std::size_t i{disable};
 		if (enabled_[disable])
 		{
@@ -154,10 +162,14 @@ protected:
 		}
 	}
 
+	/* @brief Marks the cell in chain of head cells for \id directly past the
+	 * last enabled as enabled and adds new slice starting at corresponding
+	 * position.
+	 */
 	void EnableSlice(RealId id)
 	{
 		auto& receiver = info_.at(id);
-		auto enable = receiver.indices[receiver.enabled];
+		auto enable = receiver.heads[receiver.enabled];
 		for (std::size_t i{enable}; !enabled_[i]; NextRingPosition(lookup_size, i))
 		{
 			++receiver.actual;
@@ -212,15 +224,15 @@ public:
 			Real r = unweight[u].Match(seql());
 			RealId rid = to_id_[r];
 			lookup_[pos] = rid;
-			std::vector<Index>& indices = info_[rid].indices;
+			std::vector<Index>& indices = info_[rid].heads;
 			indices.push_back(pos);
 			u = NextRingPosition(unweight.size(), u);
 		}
 
 		for (auto& [real, info] : info_)
 		{
-			info.enabled = info.indices.size();
-			info.actual = info.indices.size();
+			info.enabled = info.heads.size();
+			info.actual = info.heads.size();
 		}
 
 		std::cout << "Colored lookup ring." << std::endl;
@@ -229,6 +241,7 @@ public:
 		std::cout << "Initialized weights." << std::endl;
 	}
 
+	/* @brief Truncates \idx to lookup ring size and returns corresponding real*/
 	Real Lookup(Key idx)
 	{
 		return to_real_[lookup_[idx & lookup_mask]];
