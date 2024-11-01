@@ -18,7 +18,7 @@ class ChattyChash : public balancer::Chash<Real, LookupBits>
 	using Base::lookup_;
 	using Base::lookup_mask;
 	using Base::lookup_size;
-	using Base::segments_per_weight_unit_;
+	using Base::slices_per_weight_unit_;
 	using Base::to_real_;
 
 public:
@@ -44,11 +44,11 @@ public:
 		for (auto& [id, info] : Base::info_)
 		{
 			std::cout << std::setw(10) << std::left << to_real_[id] << " "
-			          << std::setw(8) << info_.at(id).indices.size()
+			          << std::setw(8) << info_.at(id).heads.size()
 			          << std::setw(7) << std::right << dist[id]
 			          << std::setw(9) << std::right << Parenthesize(info.enabled)
-			          << std::setw(10) << std::right << std::fixed << std::setprecision(1) << static_cast<double>(dist[id]) * 100.0 / info.indices.size() << ' '
-			          << std::setw(9) << std::right << Parenthesize(std::fixed, std::setprecision(1), static_cast<double>(info.enabled) * 100.0 / info.indices.size()) << " "
+			          << std::setw(10) << std::right << std::fixed << std::setprecision(1) << static_cast<double>(dist[id]) * 100.0 / info.heads.size() << ' '
+			          << std::setw(9) << std::right << Parenthesize(std::fixed, std::setprecision(1), static_cast<double>(info.enabled) * 100.0 / info.heads.size()) << " "
 			          << std::setw(10) << std::right << static_cast<double>(dist[id]) * 100 / norm;
 			std::cout << std::setw(9) << std::right << static_cast<int>(info_.at(id).desired)
 			          << "\n";
@@ -95,6 +95,6 @@ public:
 	{
 		std::cout << "Lookup ring size: " << lookup_size << '\n'
 		          << "Lookup mask:" << std::hex << lookup_mask << std::dec << '\n'
-		          << "Segments at 100 weight: " << segments_per_weight_unit_ * 100 << '\n';
+		          << "Segments at 100 weight: " << slices_per_weight_unit_ * 100 << '\n';
 	}
 };

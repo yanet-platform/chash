@@ -111,7 +111,7 @@ protected:
 			while (info.enabled > ClampedCellCount(to_id_.at(real), weight))
 			{
 				--info.enabled;
-				enabled_.at(info.indices.at(info.enabled)) = false;
+				enabled_.at(info.heads.at(info.enabled)) = false;
 			}
 		}
 

@@ -3,7 +3,6 @@
 #include <string>
 
 #include <argparse/argparse.hpp>
-#include <nlohmann/json.hpp>
 
 #include "chatty-chash.hpp"
 
@@ -16,11 +15,21 @@ std::map<std::string, balancer::Weight> ReadConfig(std::string path)
 		std::exit(EXIT_FAILURE);
 	}
 
-	nlohmann::json result = nlohmann::json::parse(config, nullptr, false);
-	if (result.is_discarded())
+	std::map<std::string, balancer::Weight> result;
+	for (std::string line; std::getline(config, line);)
 	{
-		std::cout << "Failed to parse configuration file: malformed JSON\n";
-		std::exit(EXIT_FAILURE);
+		std::string real;
+		unsigned int weight;
+
+		std::istringstream is(std::move(line));
+		is >> real;
+		is >> weight;
+		if (!is.eof())
+		{
+			std::cout << "Wrong config file format\n";
+			std::exit(EXIT_FAILURE);
+		}
+		result.emplace(real, weight);
 	}
 	return result;
 }
@@ -51,7 +60,6 @@ std::ostream& operator<<(std::ostream& o, const balancer::Unweighted<Real>& ring
 	return o;
 }
 
-
 int main(int argc, char* argv[])
 {
 	argparse::ArgumentParser args;
@@ -61,6 +69,8 @@ int main(int argc, char* argv[])
 	        .help("size of the lookup array. Actual value is 2^<this_argument>")
 	        .implicit_value(16)
 	        .scan<'u', std::uint8_t>();
+	args.add_argument("-i", "--interactive")
+	        .help("run interactive shell");
 	args.add_description("Standalone demo of consistent hashing library.");
 	// args.add_epilog("TODO link to github page");
 
@@ -89,7 +99,7 @@ int main(int argc, char* argv[])
 		         {"epsilon", 1}};
 	}
 	std::cout << "Demo start." << std::endl;
-	
+
 	ChattyChash<std::string, 18> bal(reals, 1 << 17);
 
 	std::cout << "-----------------------------------------------------------\n"
