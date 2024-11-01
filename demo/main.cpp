@@ -64,13 +64,14 @@ int main(int argc, char* argv[])
 {
 	argparse::ArgumentParser args;
 	args.add_argument("-c", "--config")
-	        .help("path to configuration file");
+	        .help("path to configuration file. File should contain lines '<real_name_string> <real>\\n'.");
 	args.add_argument("-l", "--lookup-bits")
 	        .help("size of the lookup array. Actual value is 2^<this_argument>")
 	        .implicit_value(16)
 	        .scan<'u', std::uint8_t>();
 	args.add_argument("-i", "--interactive")
-	        .help("run interactive shell");
+	        .help("run interactive shell")
+			.flag();
 	args.add_description("Standalone demo of consistent hashing library.");
 	// args.add_epilog("TODO link to github page");
 
