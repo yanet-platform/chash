@@ -46,7 +46,7 @@ protected:
 	using Index = Key;
 	static constexpr auto lookup_size = 1 << LookupBits;
 	static constexpr Index lookup_mask = lookup_size - 1;
-	Index segments_per_weight_unit_ = 20;
+	Index slices_per_weight_unit_ = 20;
 	/* Real indices are not consistent between different balancers. More over
 	 * Real that was was removed from config is not guaranteed to get the same
 	 * index.
@@ -58,7 +58,7 @@ protected:
 	std::vector<RealId> lookup_;
 	std::vector<bool> enabled_;
 
-	/* @brief Returns number of segments as if they were fairly distributed
+	/* @brief Returns number of slices as if they were fairly distributed
 	 * between active reals
 	 */
 	std::size_t Fair()
@@ -68,31 +68,31 @@ protected:
 
 	std::size_t HardClampedCellCount(RealId id, Weight weight)
 	{
-		return weight * segments_per_weight_unit_;
+		return weight * slices_per_weight_unit_;
 	}
 
 	void UpdateWeight(RealId id, Weight weight)
 	{
 		auto& info = info_.at(id);
 		info.desired = weight;
-		std::size_t segments_target = HardClampedCellCount(id, weight);
-		if (segments_target < info.enabled)
+		std::size_t slices_target = HardClampedCellCount(id, weight);
+		if (slices_target < info.enabled)
 		{
-			while (info.enabled > segments_target)
+			while (info.enabled > slices_target)
 			{
-				DisableSegment(id);
+				DisableSlice(id);
 			}
 		}
 		else
 		{
-			while (info.enabled < segments_target)
+			while (info.enabled < slices_target)
 			{
-				EnableSegment(id);
+				EnableSlice(id);
 			}
 		}
 	}
 
-	/* @brief Instead of disabling segments one by one when lookup ring is
+	/* @brief Instead of disabling slices one by one when lookup ring is
 	 * created, this function marks marks all the positions being disabled
 	 * and then loops throgh lookup ring recoloring according to current state
 	 */
@@ -128,13 +128,13 @@ protected:
 	};
 
 	std::unordered_map<RealId, Index> debug;
-	/* @brief Marks the last enabled segment in the chain of segmentsfor \id as
+	/* @brief Marks the last enabled slice in the chain of slices for \id as
 	 * disabled and recolors corresponding lookup position whith id that is to
 	 * immediate left. Doesn't take into account if that position is of the same
 	 * color. We rely on the fact that such occurances are comparatively rare
 	 * and the lower the target weight the rarer they become
 	 */
-	void DisableSegment(RealId id)
+	void DisableSlice(RealId id)
 	{
 		auto& donor = info_.at(id);
 		auto disable = donor.indices.at(--donor.enabled);
@@ -154,7 +154,7 @@ protected:
 		}
 	}
 
-	void EnableSegment(RealId id)
+	void EnableSlice(RealId id)
 	{
 		auto& receiver = info_.at(id);
 		auto enable = receiver.indices[receiver.enabled];

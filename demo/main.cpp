@@ -89,7 +89,7 @@ int main(int argc, char* argv[])
 		         {"epsilon", 1}};
 	}
 	std::cout << "Demo start." << std::endl;
-	std::cout << std::endl;
+	
 	ChattyChash<std::string, 18> bal(reals, 1 << 17);
 
 	std::cout << "-----------------------------------------------------------\n"
