@@ -7,10 +7,9 @@
 
 #include "../common/Crc32.h"
 
-namespace balancer
+namespace chash
 {
 
-using Index = std::size_t;
 using Salt = std::uint32_t; // Salt is what differentiates one Unweighted from another
 using IdHash = std::uint32_t; // IdHash = f(Real, Salt)
 

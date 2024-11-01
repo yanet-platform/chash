@@ -7,12 +7,14 @@
 #include <vector>
 
 #include "bit-reverse.hpp"
+#include "common.hpp"
+#include "delta.hpp"
 #include "unweighted.hpp"
 #include "utils.hpp"
 
-namespace balancer
+namespace chash
 {
-using Weight = std::uint8_t;
+
 static constexpr auto RNG_SEED = 42;
 
 template<typename Index>
@@ -34,6 +36,7 @@ class Weight
 };
 #endif
 
+/* Real has to be comparable (map ordering, collision resolution)*/
 template<typename Real, std::uint8_t LookupBits>
 class Chash
 {
@@ -41,9 +44,7 @@ public:
 	static constexpr auto MaxWeight = 100;
 
 protected:
-	using RealId = std::uint16_t;
-	using Key = std::uint32_t;
-	using Index = Key;
+	using Key = Index;
 	static constexpr auto lookup_size = 1 << LookupBits;
 	static constexpr Index lookup_mask = lookup_size - 1;
 	Index slices_per_weight_unit_ = 20;
@@ -57,6 +58,11 @@ protected:
 	std::map<RealId, RealInfo<Index>> info_;
 	std::vector<RealId> lookup_;
 	std::vector<bool> enabled_;
+	// indexes unweighted rings RealId came from
+	std::vector<UnweightedIndex> to_unweighted_;
+
+	RealId unassigned = 0;
+	std::set<RealId> freed;
 
 	/* @brief Returns number of slices as if they were fairly distributed
 	 * between active reals
@@ -75,28 +81,31 @@ protected:
 		return weight * slices_per_weight_unit_;
 	}
 
+	void AddReal()
+	{
+	}
+
 	/* @brief disables/enables \id slices one by one until the /weight requirement
 	 * is met
 	 */
-	void UpdateWeight(RealId id, Weight weight)
+	std::vector<Slice> UpdateWeight(RealId id, Weight weight)
 	{
 		auto& info = info_.at(id);
 		info.desired = weight;
 		std::size_t slices_target = ClampedCellCount(id, weight);
-		if (slices_target < info.enabled)
+
+		while (info.enabled > slices_target)
 		{
-			while (info.enabled > slices_target)
-			{
-				DisableSlice(id);
-			}
+			DisableSlice(id);
 		}
-		else
+
+		while (info.enabled < slices_target)
 		{
-			while (info.enabled < slices_target)
-			{
-				EnableSlice(id);
-			}
+			EnableSlice(id);
 		}
+
+		// TODO
+		return {};
 	}
 
 	/* @brief Instead of disabling slices one by one when lookup ring is
@@ -219,6 +228,7 @@ public:
 			auto n = seq();
 			return n;
 		};
+
 		for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits<LookupBits>(i))
 		{
 			Real r = unweight[u].Match(seql());
@@ -239,6 +249,31 @@ public:
 
 		InitWeights(reals);
 		std::cout << "Initialized weights." << std::endl;
+	}
+
+	Delta<Real> UpdateReals(const std::map<Real, Weight>& reals)
+	{
+		DeltaBuilder<Real> builder;
+		for (auto& [real, weight] : reals)
+		{
+			auto it = info_.find(real);
+			if (it == info_.end())
+			{
+				Add(real);
+				builder.Add(real, to_id_.at(real));
+				it = info_.find(real);
+			}
+
+			auto slices = UpdateWeight(it->second, weight);
+			builder.Add(slices);
+
+			if (weight == 0)
+			{
+				Remove(real);
+				builder.Remove(real);
+			}
+		}
+		return builder.GetDelta();
 	}
 
 	/* @brief Truncates \idx to lookup ring size and returns corresponding real*/

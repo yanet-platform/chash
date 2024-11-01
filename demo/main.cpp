@@ -6,7 +6,7 @@
 
 #include "chatty-chash.hpp"
 
-std::map<std::string, balancer::Weight> ReadConfig(std::string path)
+std::map<std::string, chash::Weight> ReadConfig(std::string path)
 {
 	std::ifstream config(path);
 	if (!config.is_open())
@@ -15,7 +15,7 @@ std::map<std::string, balancer::Weight> ReadConfig(std::string path)
 		std::exit(EXIT_FAILURE);
 	}
 
-	std::map<std::string, balancer::Weight> result;
+	std::map<std::string, chash::Weight> result;
 	for (std::string line; std::getline(config, line);)
 	{
 		std::string real;
@@ -35,9 +35,9 @@ std::map<std::string, balancer::Weight> ReadConfig(std::string path)
 }
 
 template<typename Real>
-std::ostream& operator<<(std::ostream& o, const balancer::Unweighted<Real>& ring)
+std::ostream& operator<<(std::ostream& o, const chash::Unweighted<Real>& ring)
 {
-	std::map<Real, balancer::IdHash> to_hid;
+	std::map<Real, chash::IdHash> to_hid;
 	for (auto& [h, r] : ring.to_real_)
 	{
 		to_hid[r] = h;
@@ -85,7 +85,7 @@ int main(int argc, char* argv[])
 		std::exit(EXIT_FAILURE);
 	}
 
-	std::map<std::string, balancer::Weight> reals;
+	std::map<std::string, chash::Weight> reals;
 
 	if (std::optional<std::string> path = args.present("--config"))
 	{

@@ -7,12 +7,12 @@
 #include "printers.hpp"
 
 template<typename Real, std::uint8_t LookupBits>
-class ChattyChash : public balancer::Chash<Real, LookupBits>
+class ChattyChash : public chash::Chash<Real, LookupBits>
 {
-	using Base = balancer::Chash<Real, LookupBits>;
-	using RealId = typename Base::RealId;
+	using Base = chash::Chash<Real, LookupBits>;
+	using RealId = typename chash::RealId;
 	using Key = typename Base::Key;
-	using Index = typename Base::Index;
+	using Index = typename chash::Index;
 	using Base::enabled_;
 	using Base::info_;
 	using Base::lookup_;
@@ -22,7 +22,7 @@ class ChattyChash : public balancer::Chash<Real, LookupBits>
 	using Base::to_real_;
 
 public:
-	ChattyChash(const std::map<Real, balancer::Weight>& reals, std::size_t uwtd_count) :
+	ChattyChash(const std::map<Real, chash::Weight>& reals, std::size_t uwtd_count) :
 	        Base(reals, uwtd_count)
 	{}
 	void Report()
