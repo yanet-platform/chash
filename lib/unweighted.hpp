@@ -57,4 +57,4 @@ public:
 	}
 };
 
-} // namespace balancer
+} // namespace chash

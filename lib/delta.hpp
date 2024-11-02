@@ -32,6 +32,7 @@ class DeltaBuilder
 public:
 	void Add(Slice slice)
 	{
+		// TODO
 	}
 
 	void Add(const std::vector<Slice>& slices)
@@ -48,4 +49,4 @@ public:
 	}
 };
 
-}
+} //namespace chash

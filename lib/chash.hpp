@@ -9,6 +9,7 @@
 #include "bit-reverse.hpp"
 #include "common.hpp"
 #include "delta.hpp"
+#include "id-manager.hpp"
 #include "unweighted.hpp"
 #include "utils.hpp"
 
@@ -52,24 +53,21 @@ protected:
 	 * Real that was was removed from config is not guaranteed to get the same
 	 * index.
 	 */
-	std::unordered_map<RealId, Real> to_real_;
-	std::unordered_map<Real, RealId> to_id_;
+	IdManager<Real> idm_;
+
+	// Pool with different matchings from real to hash
+	std::vector<Unweighted<Real>> unweighted_;
 
 	std::map<RealId, RealInfo<Index>> info_;
 	std::vector<RealId> lookup_;
 	std::vector<bool> enabled_;
-	// indexes unweighted rings RealId came from
-	std::vector<UnweightedIndex> to_unweighted_;
-
-	RealId unassigned = 0;
-	std::set<RealId> freed;
 
 	/* @brief Returns number of slices as if they were fairly distributed
 	 * between active reals
 	 */
 	std::size_t Fair()
 	{
-		return lookup_.size() / to_real_.size();
+		return lookup_.size() / idm_.size();
 	}
 
 	/* @brief returns cell count for \id corresponding to \weight. Due to
@@ -81,8 +79,22 @@ protected:
 		return weight * slices_per_weight_unit_;
 	}
 
-	void AddReal()
+	void Add(const Real& real)
 	{
+		RealId id = AssignId(real);
+
+		for (auto& ring: unweighted_)
+		{
+			ring.Add(real);
+		}
+
+		for (int i = 0; i < lookup_.size(); ++i)
+		{
+			auto& ring = unweighted_[RingPosition(unweighted_.size(), i)];
+
+
+			// TODO
+		}
 	}
 
 	/* @brief disables/enables \id slices one by one until the /weight requirement
@@ -116,8 +128,9 @@ protected:
 	{
 		for (auto& [real, weight] : reals)
 		{
-			auto& info = info_.at(to_id_.at(real));
-			while (info.enabled > ClampedCellCount(to_id_.at(real), weight))
+			RealId id = idm_.GetId(real);
+			auto& info = info_.at(id);
+			while (info.enabled > ClampedCellCount(id, weight))
 			{
 				--info.enabled;
 				enabled_.at(info.heads.at(info.enabled)) = false;
@@ -179,7 +192,7 @@ protected:
 	{
 		auto& receiver = info_.at(id);
 		auto enable = receiver.heads[receiver.enabled];
-		for (std::size_t i{enable}; !enabled_[i]; NextRingPosition(lookup_size, i))
+		for (std::size_t i{enable}; !enabled_[i]; i = NextRingPosition(lookup_size, i))
 		{
 			++receiver.actual;
 			--info_.at(lookup_[i]).actual;
@@ -196,13 +209,9 @@ public:
 		assert(lookup_.size() == lookup_size);
 		assert(lookup_.size() == enabled_.size());
 
-		std::size_t i = 0;
 		for (auto& [real, weight] : reals)
 		{
-			to_id_[real] = i;
-			to_real_[i] = real;
-			info_[i].desired = weight;
-			++i;
+			info_.at(idm_.Assign(real)).desired = weight;
 		}
 
 		std::mt19937 seq(RNG_SEED);
@@ -212,31 +221,24 @@ public:
 			realv.push_back(r.first);
 		}
 
-		// Pool with different matchings from real to hash
-		std::vector<Unweighted<Real>> unweight;
+
 		for (std::size_t i = 0; i < uwtd_count; ++i)
 		{
 			auto salt = seq();
-			unweight.emplace_back(realv, salt);
+			unweighted_.emplace_back(realv, salt);
 		}
 
 		std::cout << "Generated unweighted rings." << std::endl;
 
 		std::size_t u{};
-		// Fill lookup ring choosing for every next index middle of yet unfilled range
-		auto seql = [&]() {
-			auto n = seq();
-			return n;
-		};
-
 		for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits<LookupBits>(i))
 		{
-			Real r = unweight[u].Match(seql());
-			RealId rid = to_id_[r];
+			Real r = unweighted_[u].Match(i);
+			RealId rid = idm_.GetId(r);
 			lookup_[pos] = rid;
 			std::vector<Index>& indices = info_[rid].heads;
 			indices.push_back(pos);
-			u = NextRingPosition(unweight.size(), u);
+			u = NextRingPosition(unweighted_.size(), u);
 		}
 
 		for (auto& [real, info] : info_)
@@ -260,7 +262,7 @@ public:
 			if (it == info_.end())
 			{
 				Add(real);
-				builder.Add(real, to_id_.at(real));
+				builder.Add(real, idm_.GetId(real));
 				it = info_.find(real);
 			}
 
@@ -279,8 +281,8 @@ public:
 	/* @brief Truncates \idx to lookup ring size and returns corresponding real*/
 	Real Lookup(Key idx)
 	{
-		return to_real_[lookup_[idx & lookup_mask]];
+		return idm_.GetReal(lookup_[idx & lookup_mask]);
 	}
 };
 
-} // namespace balancer
+} // namespace chash

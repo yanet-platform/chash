@@ -7,6 +7,11 @@ std::size_t ChangeRingPosition(std::size_t ring_size, std::size_t pos, int offse
 		return (ring_size + pos + offset) % ring_size;
 }
 
+std::size_t RingPosition(std::size_t ring_size, std::size_t pos)
+{
+	return ChangeRingPosition(ring_size, pos, 0);
+}
+
 std::size_t NextRingPosition(std::size_t ring_size, std::size_t pos)
 {
 	return ChangeRingPosition(ring_size, pos, 1);
