@@ -14,7 +14,18 @@ struct Slice
 
 bool operator<(const Slice& a, const Slice& b)
 {
-	return a.begin < b.end;
+	return a.begin < b.begin;
+}
+
+bool operator==(const Slice& a, const Slice& b)
+{
+	return (a.begin == b.begin) && (a.end == b.end) && (a.id == b.id);
+}
+
+std::ostream& operator<<(std::ostream& o, const chash::Slice& slice)
+{
+	o << "{ " << slice.begin << ", " << slice.end << ", " << slice.id << "}";
+	return o;
 }
 
 template<typename Real>
@@ -43,8 +54,19 @@ public:
 		delta_.remove.erase(id);
 	}
 
-	void Add(const Slice& slice)
+	void Add(Slice slice)
 	{
+		if (slice.begin > slice.end)
+		{
+			Index e = slice.end;
+			slice.end = std::numeric_limits<Index>::max();
+			Add(slice);
+			slice.end = e;
+			slice.begin = 0;
+			Add(slice);
+			return;
+		}
+
 		auto& slices = delta_.slices;
 
 		if (slices.empty())
@@ -68,7 +90,14 @@ public:
 				}
 				else
 				{
-					left.end = slice.begin;
+					Slice lupdate = *left;
+					lupdate.end = slice.begin;
+					Slice rupdate = *left;
+					rupdate.begin = slice.begin;
+					slices.erase(left);
+					slices.insert(lupdate);
+					slices.insert(rupdate);
+					it = slices.lower_bound(slice);
 				}
 			}
 		}
@@ -91,7 +120,10 @@ public:
 			}
 			else
 			{
-				it->begin = slice.end;
+				Slice update = *it;
+				update.begin = slice.end;
+				slices.erase(it);
+				slices.insert(update);
 			}
 		}
 
