@@ -76,7 +76,7 @@ protected:
 	 */
 	std::size_t ClampedCellCount(RealId id, Weight weight)
 	{
-		return weight * slices_per_weight_unit_;
+		return std::min(weight * slices_per_weight_unit_, info_.at(id).heads.size());
 	}
 
 	void Add(const Real& real)
@@ -88,13 +88,22 @@ protected:
 			ring.Add(real);
 		}
 
+		//for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits<LookupBits>(i))
 		for (int i = 0; i < lookup_.size(); ++i)
 		{
 			auto& ring = unweighted_[RingPosition(unweighted_.size(), i)];
+			if (real == ring.Match(i))
+			{
+				RealId old = lookup_[i];
+				// TODO
 
-
-			// TODO
+			}
 		}
+	}
+
+	void Remove(const Real& real)
+	{
+
 	}
 
 	/* @brief disables/enables \id slices one by one until the /weight requirement
