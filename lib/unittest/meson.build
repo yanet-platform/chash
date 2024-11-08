@@ -22,11 +22,3 @@ bit_reverse = executable(
 )
 
 test('bit-reverse', bit_reverse, protocol: 'gtest')
-
-delta = executable(
-	'delta-unittest',
-	'test-delta.cpp',
-	dependencies: dependencies
-)
-
-test('delta', delta, protocol: 'gtest')

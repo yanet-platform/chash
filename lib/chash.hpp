@@ -76,7 +76,7 @@ protected:
 	/* @brief disables/enables \id slices one by one until the /weight requirement
 	 * is met
 	 */
-	std::vector<Slice> UpdateWeight(RealId id, Weight weight)
+	void UpdateWeight(RealId id, Weight weight)
 	{
 		auto& info = info_.at(id);
 		info.desired = weight * slices_per_weight_unit_;
@@ -98,8 +98,8 @@ protected:
 	void FillGaps(const std::map<Real, RealConfig>& reals)
 	{
 		auto first = std::find(enabled_.begin(), enabled_.end(), true);
-		Index start = ats::distance(enabled_.begin(), first);
-		RealId tint = lookup_[i];
+		Index start = std::distance(enabled_.begin(), first);
+		RealId tint = lookup_[start];
 		for (std::size_t i = 0, pos = 0;
 		     i < lookup_.size();
 		     ++i, pos = NextRingPosition(lookup_.size(), i))
@@ -127,11 +127,7 @@ protected:
 		auto& donor = info_.at(id);
 		auto disable = donor.heads.at(--donor.enabled);
 		std::size_t i{disable};
-		if (enabled_[disable])
-		{
-			++debug[id];
-			enabled_[disable] = false;
-		}
+		enabled_[disable] = false;
 		RealId tint = lookup_[PrevRingPosition(lookup_size, i)];
 		auto& receiver = info_.at(tint);
 		for (; !enabled_[i]; i = NextRingPosition(lookup_size, i))
@@ -189,7 +185,6 @@ public:
 
 		std::cout << "Generated unweighted rings." << std::endl;
 
-		RealId current{};
 		std::size_t u{};
 		for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits<LookupBits>(i))
 		{
@@ -217,9 +212,9 @@ public:
 		std::cout << "Colored lookup ring." << std::endl;
 	}
 
-	bool UpdateWeights(std::vector<std::pair<RealId, RealConfig>>& request)
+	void UpdateWeights(std::vector<std::pair<RealId, RealConfig>>& request)
 	{
-		for (auto& [id, cfg]: request)
+		for (auto& [id, cfg] : request)
 		{
 			UpdateWeight(id, cfg);
 		}
