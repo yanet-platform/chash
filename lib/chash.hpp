@@ -8,7 +8,6 @@
 
 #include "bit-reverse.hpp"
 #include "common.hpp"
-#include "delta.hpp"
 #include "unweighted.hpp"
 #include "utils.hpp"
 
@@ -54,6 +53,7 @@ protected:
 	static constexpr auto lookup_size = 1 << LookupBits;
 	static constexpr Index lookup_mask = lookup_size - 1;
 	Index slices_per_weight_unit_ = 20;
+	Index full_load_ = slices_per_weight_unit_ * MaxWeight;
 
 	std::unordered_map<RealId, Real> to_real_;
 	std::unordered_map<Real, RealId> to_id_;
@@ -73,100 +73,48 @@ protected:
 		return lookup_.size() / to_id_.size();
 	}
 
-	/* @brief returns cell count for \id corresponding to \weight. Due to
-	 * random nature of cell distribution between reals we cap cell count
-	 * for real at a value that is available to every real
-	 */
-	std::size_t ClampedCellCount(RealId id, Weight weight)
-	{
-		return std::min<std::size_t>(weight * slices_per_weight_unit_, info_.at(id).heads.size());
-	}
-
-	void Add(const Real& real)
-	{
-		RealId id = AssignId(real);
-
-		for (auto& ring : unweighted_)
-		{
-			ring.Add(real);
-		}
-
-		// for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits<LookupBits>(i))
-		for (int i = 0; i < lookup_.size(); ++i)
-		{
-			auto& ring = unweighted_[RingPosition(unweighted_.size(), i)];
-			if (real == ring.Match(i))
-			{
-				RealId old = lookup_[i];
-				// TODO
-			}
-		}
-	}
-
-	void Remove(const Real& real)
-	{
-	}
-
 	/* @brief disables/enables \id slices one by one until the /weight requirement
 	 * is met
 	 */
 	std::vector<Slice> UpdateWeight(RealId id, Weight weight)
 	{
 		auto& info = info_.at(id);
-		info.desired = weight;
-		std::size_t slices_target = ClampedCellCount(id, weight);
+		info.desired = weight * slices_per_weight_unit_;
 
-		while (info.enabled > slices_target)
+		while (info.enabled > info.desired)
 		{
 			DisableSlice(id);
 		}
 
-		while (info.enabled < slices_target)
+		while (info.enabled < info.desired)
 		{
 			EnableSlice(id);
 		}
-
-		// TODO
-		return {};
 	}
 
-	/* @brief Instead of disabling slices one by one when lookup ring is
-	 * created, this function marks marks all the positions being disabled
-	 * and then loops throgh lookup ring recoloring according to current state.
+	/* @brief Colors segments according to enabled heads colors. Expects at least
+	 * single Segment head to be enabled.
 	 */
-	void InitWeights(const std::map<Real, RealConfig>& reals)
+	void FillGaps(const std::map<Real, RealConfig>& reals)
 	{
-		for (auto& [real, cfg] : reals)
+		auto first = std::find(enabled_.begin(), enabled_.end(), true);
+		Index start = ats::distance(enabled_.begin(), first);
+		RealId tint = lookup_[i];
+		for (std::size_t i = 0, pos = 0;
+		     i < lookup_.size();
+		     ++i, pos = NextRingPosition(lookup_.size(), i))
 		{
-			RealId id = to_id_.at(real);
-			auto& info = info_.at(id);
-			while (info.enabled > ClampedCellCount(id, cfg.weight))
+			if (enabled_[pos])
 			{
-				--info.enabled;
-				enabled_.at(info.heads.at(info.enabled)) = false;
-			}
-		}
-
-		std::size_t i{};
-		while (!enabled_.at(i))
-		{
-			++i;
-		}
-		RealId tint = lookup_.at(i);
-		for (std::size_t count = lookup_.size(); count != 0; --count, i = NextRingPosition(lookup_size, i))
-		{
-			if (enabled_.at(i))
-			{
-				tint = lookup_.at(i);
+				tint = lookup_[pos];
 			}
 			else
 			{
-				lookup_.at(i) = tint;
+				lookup_[pos] = tint;
 			}
 		}
 	};
 
-	std::unordered_map<RealId, Index> debug;
 	/* @brief Marks the last enabled cell in the chain of head cells for \id as
 	 * disabled and removes slice from lookup starting at the cell position.
 	 * this is done by combining it with the slice to immediate left. Doesn't
@@ -214,14 +162,14 @@ protected:
 public:
 	Chash(const std::map<Real, RealConfig>& reals, std::size_t uwtd_count) :
 	        lookup_(lookup_size, std::numeric_limits<RealId>::max()),
-	        enabled_(lookup_size, true)
+	        enabled_(lookup_size, false)
 	{
 		assert(lookup_.size() == lookup_size);
 		assert(lookup_.size() == enabled_.size());
 
 		for (auto& [real, cfg] : reals)
 		{
-			info_[cfg.id].desired = cfg.weight;
+			info_[cfg.id].desired = cfg.weight * slices_per_weight_unit_;
 		}
 
 		std::mt19937 seq(RNG_SEED);
@@ -241,14 +189,22 @@ public:
 
 		std::cout << "Generated unweighted rings." << std::endl;
 
+		RealId current{};
 		std::size_t u{};
 		for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits<LookupBits>(i))
 		{
 			Real r = unweighted_[u].Match(i);
 			RealId rid = to_id_.at(r);
-			lookup_[pos] = rid;
 			std::vector<Index>& indices = info_[rid].heads;
-			indices.push_back(pos);
+			if (indices.size() < full_load_)
+			{
+				indices.push_back(pos);
+				if (indices.size() < info_[rid].desired)
+				{
+					enabled_[pos] = true;
+					lookup_[pos] = rid;
+				}
+			}
 			u = NextRingPosition(unweighted_.size(), u);
 		}
 
@@ -259,34 +215,14 @@ public:
 		}
 
 		std::cout << "Colored lookup ring." << std::endl;
-
-		InitWeights(reals);
-		std::cout << "Initialized weights." << std::endl;
 	}
 
-	Delta<Real> UpdateReals(const std::map<Real, Weight>& reals)
+	bool UpdateWeights(std::vector<std::pair<RealId, RealConfig>>& request)
 	{
-		DeltaBuilder<Real> builder;
-		for (auto& [real, weight] : reals)
+		for (auto& [id, cfg]: request)
 		{
-			auto it = info_.find(real);
-			if (it == info_.end())
-			{
-				Add(real);
-				builder.Add(real, to_id_.at(real));
-				it = info_.find(real);
-			}
-
-			auto slices = UpdateWeight(it->second, weight);
-			builder.Add(slices);
-
-			if (weight == 0)
-			{
-				Remove(real);
-				builder.Remove(real);
-			}
+			UpdateWeight(id, cfg);
 		}
-		return builder.GetDelta();
 	}
 
 	/* @brief Truncates \idx to lookup ring size and returns corresponding real*/
