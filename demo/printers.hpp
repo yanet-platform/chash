@@ -84,3 +84,9 @@ void Print(const std::unordered_map<K, V>& vec)
 {
 	PrintContainer(vec);
 }
+
+std::ostream& operator<<(std::ostream& os, chash::RealConfig cfg)
+{
+	os << "{" << cfg.id << ", " << static_cast<int>(cfg.weight) << "}";
+	return os;
+}

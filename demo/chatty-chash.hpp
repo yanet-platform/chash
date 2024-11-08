@@ -19,10 +19,10 @@ class ChattyChash : public chash::Chash<Real, LookupBits>
 	using Base::lookup_mask;
 	using Base::lookup_size;
 	using Base::slices_per_weight_unit_;
-	using Base::idm_;
+	using Base::to_real_;
 
 public:
-	ChattyChash(const std::map<Real, chash::Weight>& reals, std::size_t uwtd_count) :
+	ChattyChash(const std::map<Real, chash::RealConfig>& reals, std::size_t uwtd_count) :
 	        Base(reals, uwtd_count)
 	{}
 	void Report()
@@ -43,7 +43,7 @@ public:
 		std::cout << "Id         Alloc    Active  Enabled   \%Active  \%Enabled Normalized   Target\n";
 		for (auto& [id, info] : Base::info_)
 		{
-			std::cout << std::setw(10) << std::left << idm_.GetReal(id) << " "
+			std::cout << std::setw(10) << std::left << to_real_.at(id) << " "
 			          << std::setw(8) << info_.at(id).heads.size()
 			          << std::setw(7) << std::right << dist[id]
 			          << std::setw(9) << std::right << Parenthesize(info.enabled)
@@ -80,7 +80,7 @@ public:
 		}
 		for (RealId i = 0; i < r.size(); ++i)
 		{
-			std::cout << std::setw(10) << std::left << idm_.GetReal(i);
+			std::cout << std::setw(10) << std::left << to_real_.at(i);
 			for (auto& [l, cnt] : r[i])
 			{
 				std::stringstream ss;

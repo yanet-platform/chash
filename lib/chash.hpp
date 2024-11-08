@@ -9,7 +9,6 @@
 #include "bit-reverse.hpp"
 #include "common.hpp"
 #include "delta.hpp"
-#include "id-manager.hpp"
 #include "unweighted.hpp"
 #include "utils.hpp"
 
@@ -17,6 +16,12 @@ namespace chash
 {
 
 static constexpr auto RNG_SEED = 42;
+
+struct RealConfig
+{
+	RealId id;
+	Weight weight;
+};
 
 template<typename Index>
 struct RealInfo
@@ -49,11 +54,9 @@ protected:
 	static constexpr auto lookup_size = 1 << LookupBits;
 	static constexpr Index lookup_mask = lookup_size - 1;
 	Index slices_per_weight_unit_ = 20;
-	/* Real indices are not consistent between different balancers. More over
-	 * Real that was was removed from config is not guaranteed to get the same
-	 * index.
-	 */
-	IdManager<Real> idm_;
+
+	std::unordered_map<RealId, Real> to_real_;
+	std::unordered_map<Real, RealId> to_id_;
 
 	// Pool with different matchings from real to hash
 	std::vector<Unweighted<Real>> unweighted_;
@@ -67,7 +70,7 @@ protected:
 	 */
 	std::size_t Fair()
 	{
-		return lookup_.size() / idm_.size();
+		return lookup_.size() / to_id_.size();
 	}
 
 	/* @brief returns cell count for \id corresponding to \weight. Due to
@@ -76,19 +79,19 @@ protected:
 	 */
 	std::size_t ClampedCellCount(RealId id, Weight weight)
 	{
-		return std::min(weight * slices_per_weight_unit_, info_.at(id).heads.size());
+		return std::min<std::size_t>(weight * slices_per_weight_unit_, info_.at(id).heads.size());
 	}
 
 	void Add(const Real& real)
 	{
 		RealId id = AssignId(real);
 
-		for (auto& ring: unweighted_)
+		for (auto& ring : unweighted_)
 		{
 			ring.Add(real);
 		}
 
-		//for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits<LookupBits>(i))
+		// for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits<LookupBits>(i))
 		for (int i = 0; i < lookup_.size(); ++i)
 		{
 			auto& ring = unweighted_[RingPosition(unweighted_.size(), i)];
@@ -96,14 +99,12 @@ protected:
 			{
 				RealId old = lookup_[i];
 				// TODO
-
 			}
 		}
 	}
 
 	void Remove(const Real& real)
 	{
-
 	}
 
 	/* @brief disables/enables \id slices one by one until the /weight requirement
@@ -133,13 +134,13 @@ protected:
 	 * created, this function marks marks all the positions being disabled
 	 * and then loops throgh lookup ring recoloring according to current state.
 	 */
-	void InitWeights(const std::map<Real, Weight>& reals)
+	void InitWeights(const std::map<Real, RealConfig>& reals)
 	{
-		for (auto& [real, weight] : reals)
+		for (auto& [real, cfg] : reals)
 		{
-			RealId id = idm_.GetId(real);
+			RealId id = to_id_.at(real);
 			auto& info = info_.at(id);
-			while (info.enabled > ClampedCellCount(id, weight))
+			while (info.enabled > ClampedCellCount(id, cfg.weight))
 			{
 				--info.enabled;
 				enabled_.at(info.heads.at(info.enabled)) = false;
@@ -211,25 +212,26 @@ protected:
 	}
 
 public:
-	Chash(const std::map<Real, Weight>& reals, std::size_t uwtd_count) :
+	Chash(const std::map<Real, RealConfig>& reals, std::size_t uwtd_count) :
 	        lookup_(lookup_size, std::numeric_limits<RealId>::max()),
 	        enabled_(lookup_size, true)
 	{
 		assert(lookup_.size() == lookup_size);
 		assert(lookup_.size() == enabled_.size());
 
-		for (auto& [real, weight] : reals)
+		for (auto& [real, cfg] : reals)
 		{
-			info_.at(idm_.Assign(real)).desired = weight;
+			info_[cfg.id].desired = cfg.weight;
 		}
 
 		std::mt19937 seq(RNG_SEED);
 		std::vector<Real> realv;
-		for (auto& r : reals)
+		for (auto& [real, cfg] : reals)
 		{
-			realv.push_back(r.first);
+			realv.push_back(real);
+			to_id_[real] = cfg.id;
+			to_real_[cfg.id] = real;
 		}
-
 
 		for (std::size_t i = 0; i < uwtd_count; ++i)
 		{
@@ -243,7 +245,7 @@ public:
 		for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits<LookupBits>(i))
 		{
 			Real r = unweighted_[u].Match(i);
-			RealId rid = idm_.GetId(r);
+			RealId rid = to_id_.at(r);
 			lookup_[pos] = rid;
 			std::vector<Index>& indices = info_[rid].heads;
 			indices.push_back(pos);
@@ -271,7 +273,7 @@ public:
 			if (it == info_.end())
 			{
 				Add(real);
-				builder.Add(real, idm_.GetId(real));
+				builder.Add(real, to_id_.at(real));
 				it = info_.find(real);
 			}
 
@@ -290,7 +292,7 @@ public:
 	/* @brief Truncates \idx to lookup ring size and returns corresponding real*/
 	Real Lookup(Key idx)
 	{
-		return idm_.GetReal(lookup_[idx & lookup_mask]);
+		return to_real_.at(lookup_[idx & lookup_mask]);
 	}
 };
 

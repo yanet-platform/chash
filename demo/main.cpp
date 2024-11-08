@@ -6,7 +6,7 @@
 
 #include "chatty-chash.hpp"
 
-std::map<std::string, chash::Weight> ReadConfig(std::string path)
+std::map<std::string, chash::RealConfig> ReadConfig(std::string path)
 {
 	std::ifstream config(path);
 	if (!config.is_open())
@@ -15,21 +15,28 @@ std::map<std::string, chash::Weight> ReadConfig(std::string path)
 		std::exit(EXIT_FAILURE);
 	}
 
-	std::map<std::string, chash::Weight> result;
+	std::map<std::string, chash::RealConfig> result;
 	for (std::string line; std::getline(config, line);)
 	{
 		std::string real;
+		chash::RealId id;
 		unsigned int weight;
 
 		std::istringstream is(std::move(line));
 		is >> real;
+		is >> id;
 		is >> weight;
 		if (!is.eof())
 		{
 			std::cout << "Wrong config file format\n";
 			std::exit(EXIT_FAILURE);
 		}
-		result.emplace(real, weight);
+		if (weight > std::numeric_limits<chash::Weight>::max())
+		{
+			std::cout << "Weight out of range\n";
+			std::exit(EXIT_FAILURE);
+		}
+		result.emplace(real, chash::RealConfig{id, static_cast<chash::Weight>(weight)});
 	}
 	return result;
 }
@@ -85,7 +92,7 @@ int main(int argc, char* argv[])
 		std::exit(EXIT_FAILURE);
 	}
 
-	std::map<std::string, chash::Weight> reals;
+	std::map<std::string, chash::RealConfig> reals;
 
 	if (std::optional<std::string> path = args.present("--config"))
 	{
@@ -93,11 +100,11 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		reals = {{"alpha", 100},
-		         {"beta", 100},
-		         {"gamma", 50},
-		         {"delta", 10},
-		         {"epsilon", 1}};
+		reals = {{"alpha", {0, 100}},
+		         {"beta", {1, 100}},
+		         {"gamma", {2, 50}},
+		         {"delta", {3, 10}},
+		         {"epsilon", {4, 1}}};
 	}
 	std::cout << "Demo start." << std::endl;
 
