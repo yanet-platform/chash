@@ -42,7 +42,7 @@ class Weight
 #endif
 
 /* Real has to be comparable (map ordering, collision resolution)*/
-template<typename Real, std::uint8_t LookupBits>
+template<typename Real>
 class Chash
 {
 public:
@@ -50,8 +50,9 @@ public:
 
 protected:
 	using Key = Index;
-	static constexpr auto lookup_size = 1 << LookupBits;
-	static constexpr Index lookup_mask = lookup_size - 1;
+	const std::uint8_t lookup_bits_ = 16;
+	const Index lookup_size = 1 << lookup_bits_;
+	const Index lookup_mask = lookup_size - 1;
 	Index slices_per_weight_unit_ = 20;
 	Index full_load_ = slices_per_weight_unit_ * MaxWeight;
 
@@ -156,7 +157,8 @@ protected:
 	}
 
 public:
-	Chash(const std::map<Real, RealConfig>& reals, std::size_t uwtd_count) :
+	Chash(const std::map<Real, RealConfig>& reals, std::size_t uwtd_count, std::uint8_t lookup_bits) :
+			lookup_bits_{lookup_bits},
 	        lookup_(lookup_size, std::numeric_limits<RealId>::max()),
 	        enabled_(lookup_size, false)
 	{
@@ -186,7 +188,7 @@ public:
 		std::cout << "Generated unweighted rings." << std::endl;
 
 		std::size_t u{};
-		for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits<LookupBits>(i))
+		for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits(lookup_bits_, i))
 		{
 			Real r = unweighted_[u].Match(i);
 			RealId rid = to_id_.at(r);

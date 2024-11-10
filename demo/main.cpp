@@ -108,7 +108,7 @@ int main(int argc, char* argv[])
 	}
 	std::cout << "Demo start." << std::endl;
 
-	ChattyChash<std::string, 18> bal(reals, 1 << 17);
+	ChattyChash<std::string> bal(reals, 1 << 5, 10);
 
 	std::cout << "-----------------------------------------------------------\n"
 	          << "  Reals requested\n"

@@ -6,10 +6,10 @@
 
 #include "printers.hpp"
 
-template<typename Real, std::uint8_t LookupBits>
-class ChattyChash : public chash::Chash<Real, LookupBits>
+template<typename Real>
+class ChattyChash : public chash::Chash<Real>
 {
-	using Base = chash::Chash<Real, LookupBits>;
+	using Base = chash::Chash<Real>;
 	using RealId = typename chash::RealId;
 	using Key = typename Base::Key;
 	using Index = typename chash::Index;
@@ -22,8 +22,8 @@ class ChattyChash : public chash::Chash<Real, LookupBits>
 	using Base::to_real_;
 
 public:
-	ChattyChash(const std::map<Real, chash::RealConfig>& reals, std::size_t uwtd_count) :
-	        Base(reals, uwtd_count)
+	ChattyChash(const std::map<Real, chash::RealConfig>& reals, std::size_t uwtd_count, std::uint8_t lookup_bits) :
+	        Base(reals, uwtd_count, lookup_bits)
 	{}
 	void Report()
 	{

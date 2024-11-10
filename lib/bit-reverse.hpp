@@ -34,3 +34,9 @@ inline constexpr std::uint32_t ReverseBits(std::uint32_t x)
 	auto y = BitReverse(x) >> (32 - Bits);
 	return y;
 }
+
+inline constexpr std::uint32_t ReverseBits(std::uint8_t bits, std::uint32_t x)
+{
+	auto y = BitReverse(x) >> (32 - bits);
+	return y;
+}
