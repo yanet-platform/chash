@@ -108,7 +108,9 @@ int main(int argc, char* argv[])
 	}
 	std::cout << "Demo start." << std::endl;
 
-	ChattyChash<std::string> bal(reals, 1 << 5, 10);
+	std::pmr::unsynchronized_pool_resource mem;
+
+	ChattyChash<std::string> bal(reals, 1 << 14, 14, &mem);
 
 	std::cout << "-----------------------------------------------------------\n"
 	          << "  Reals requested\n"

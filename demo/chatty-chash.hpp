@@ -22,8 +22,11 @@ class ChattyChash : public chash::Chash<Real>
 	using Base::to_real_;
 
 public:
-	ChattyChash(const std::map<Real, chash::RealConfig>& reals, std::size_t uwtd_count, std::uint8_t lookup_bits) :
-	        Base(reals, uwtd_count, lookup_bits)
+	ChattyChash(const std::map<Real, chash::RealConfig>& reals,
+	            std::size_t uwtd_count,
+	            std::uint8_t lookup_bits,
+				std::pmr::memory_resource* mem) :
+	        Base(reals, uwtd_count, lookup_bits, mem)
 	{}
 	void Report()
 	{
@@ -40,7 +43,7 @@ public:
 
 		std::cout << "Max: " << norm << "\n";
 		std::cout << "Fair: " << Base::Fair() << '\n';
-		std::cout << "Id         Alloc    Active  Enabled   \%Active  \%Enabled Normalized   Target\n";
+		std::cout << "Id         Alloc    Active  Enabled   \%Active  \%Enabled Current Target\n";
 		for (auto& [id, info] : Base::info_)
 		{
 			std::cout << std::setw(10) << std::left << to_real_.at(id) << " "
@@ -50,7 +53,7 @@ public:
 			          << std::setw(10) << std::right << std::fixed << std::setprecision(1) << static_cast<double>(dist[id]) * 100.0 / info.heads.size() << ' '
 			          << std::setw(9) << std::right << Parenthesize(std::fixed, std::setprecision(1), static_cast<double>(info.enabled) * 100.0 / info.heads.size()) << " "
 			          << std::setw(10) << std::right << static_cast<double>(dist[id]) * 100 / norm;
-			std::cout << std::setw(9) << std::right << static_cast<int>(info_.at(id).desired)
+			std::cout << std::setw(9) << std::right << static_cast<int>(info_.at(id).desired / slices_per_weight_unit_)
 			          << "\n";
 		}
 	}
@@ -59,10 +62,11 @@ public:
 	{
 		using SegLength = Index;
 		std::vector<std::map<SegLength, std::size_t>> r(info_.size());
-		Index i = 0;
-		for (; !enabled_[i] && i < lookup_.size(); ++i)
-			;
 		std::size_t cell{};
+		while (!enabled_[cell] && cell < lookup_.size())
+		{
+			++cell;
+		}
 		RealId tint = lookup_[cell];
 		Index len = 1;
 		for (Index i = 0; i < lookup_size; ++i, cell = NextRingPosition(lookup_size, cell))

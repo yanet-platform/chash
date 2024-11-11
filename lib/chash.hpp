@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <memory_resource>
 #include <random>
 #include <unordered_map>
 #include <vector>
@@ -28,7 +29,7 @@ struct RealInfo
 	std::vector<Index> heads;
 	std::size_t enabled;
 	std::size_t actual;
-	Weight desired;
+	std::size_t desired;
 };
 
 #if TODO
@@ -56,15 +57,15 @@ protected:
 	Index slices_per_weight_unit_ = 20;
 	Index full_load_ = slices_per_weight_unit_ * MaxWeight;
 
-	std::unordered_map<RealId, Real> to_real_;
-	std::unordered_map<Real, RealId> to_id_;
+	std::pmr::unordered_map<RealId, Real> to_real_;
+	std::pmr::unordered_map<Real, RealId> to_id_;
 
 	// Pool with different matchings from real to hash
-	std::vector<Unweighted<Real>> unweighted_;
+	std::pmr::vector<Unweighted<Real>> unweighted_;
 
-	std::map<RealId, RealInfo<Index>> info_;
-	std::vector<RealId> lookup_;
-	std::vector<bool> enabled_;
+	std::pmr::map<RealId, RealInfo<Index>> info_;
+	std::pmr::vector<RealId> lookup_;
+	std::pmr::vector<bool> enabled_;
 
 	/* @brief Returns number of slices as if they were fairly distributed
 	 * between active reals
@@ -96,14 +97,14 @@ protected:
 	/* @brief Colors segments according to enabled heads colors. Expects at least
 	 * single Segment head to be enabled.
 	 */
-	void FillGaps(const std::map<Real, RealConfig>& reals)
+	void FillGaps()
 	{
 		auto first = std::find(enabled_.begin(), enabled_.end(), true);
 		Index start = std::distance(enabled_.begin(), first);
 		RealId tint = lookup_[start];
-		for (std::size_t i = 0, pos = 0;
+		for (std::size_t i = 0, pos = start;
 		     i < lookup_.size();
-		     ++i, pos = NextRingPosition(lookup_.size(), i))
+		     ++i, pos = NextRingPosition(lookup_.size(), pos))
 		{
 			if (enabled_[pos])
 			{
@@ -112,6 +113,7 @@ protected:
 			else
 			{
 				lookup_[pos] = tint;
+				info_[tint].actual++;
 			}
 		}
 	};
@@ -157,10 +159,16 @@ protected:
 	}
 
 public:
-	Chash(const std::map<Real, RealConfig>& reals, std::size_t uwtd_count, std::uint8_t lookup_bits) :
-			lookup_bits_{lookup_bits},
-	        lookup_(lookup_size, std::numeric_limits<RealId>::max()),
-	        enabled_(lookup_size, false)
+	Chash(const std::map<Real, RealConfig>& reals,
+	      std::size_t uwtd_count,
+	      std::uint8_t lookup_bits,
+	      std::pmr::memory_resource* mem = std::pmr::get_default_resource()) :
+	        lookup_bits_{lookup_bits},
+	        to_real_{mem},
+	        to_id_{mem},
+	        unweighted_{mem},
+	        lookup_(lookup_size, std::numeric_limits<RealId>::max(), mem),
+	        enabled_(lookup_size, false, mem)
 	{
 		assert(lookup_.size() == lookup_size);
 		assert(lookup_.size() == enabled_.size());
@@ -200,6 +208,7 @@ public:
 				{
 					enabled_[pos] = true;
 					lookup_[pos] = rid;
+					info_[rid].actual++;
 				}
 			}
 			u = NextRingPosition(unweighted_.size(), u);
@@ -207,9 +216,10 @@ public:
 
 		for (auto& [real, info] : info_)
 		{
-			info.enabled = info.heads.size();
-			info.actual = info.heads.size();
+			info.enabled = info.desired;
 		}
+
+		FillGaps();
 
 		std::cout << "Colored lookup ring." << std::endl;
 	}
