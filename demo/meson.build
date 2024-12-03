@@ -10,6 +10,6 @@ libargparse = argparse.dependency('argparse')
 
 dependencies = []
 dependencies += libargparse
-dependencies += balancer_dep
+dependencies += chash_dep
 
 executable('demo', sources, dependencies: dependencies)

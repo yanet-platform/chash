@@ -1,13 +1,4 @@
-balancer_inc = include_directories('../lib')
-#balancer_inc = files(
-#	'combined.hpp',
-#	'bit-reverse.hpp',
-#	'unweighted.hpp',
-#	'utils.hpp'
-#)
-#balancer_lib = static_library(...)
-#balancer_dep = declare_dependency(link_with : my_lib
-#  include_directories : my_inc)
+chash_inc = include_directories('../lib')
 sources = files(
 	'hash.cpp',
 	'utils.cpp',
@@ -16,6 +7,6 @@ sources = files(
 
 chashlib = library('chash', sources)
 
-balancer_dep = declare_dependency(link_with: chashlib, include_directories : balancer_inc)
+chash_dep = declare_dependency(link_with: chashlib, include_directories : chash_inc)
 
 subdir('unittest')
