@@ -1,8 +1,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
-
-#include <argparse/argparse.hpp>
+#include <string_view>
 
 #include "chash.hpp"
 #include "report.hpp"
@@ -76,38 +75,57 @@ std::ostream& operator<<(std::ostream& o, const chash::Unweighted<Real>& ring)
 	return o;
 }
 
+using namespace std::string_view_literals;
+
+static constexpr std::string_view FLAG_CONFIG = "--config"sv;
+static constexpr std::string_view FLAG_CONFIG_SHORT = "-c"sv;
+
+enum class MainArg
+{
+	CONFIG,
+	UNKNOWN
+};
+
+MainArg ParseArg(const char* str)
+{
+	if (str == FLAG_CONFIG_SHORT || str == FLAG_CONFIG)
+	{
+		return MainArg::CONFIG;
+	}
+
+	return MainArg::UNKNOWN;
+}
+
 int main(int argc, char* argv[])
 {
-	argparse::ArgumentParser args;
-	args.add_argument("-c", "--config")
-	        .help("path to configuration file. File should contain lines '<real_name_string> <real>\\n'.");
-	args.add_argument("-l", "--lookup-bits")
-	        .help("size of the lookup array. Actual value is 2^<this_argument>")
-	        .implicit_value(16)
-	        .scan<'u', std::uint8_t>();
-	args.add_argument("-i", "--interactive")
-	        .help("run interactive shell")
-	        .flag();
-	args.add_description("Standalone demo of consistent hashing library.");
-	// args.add_epilog("TODO link to github page");
-
-	try
+	std::optional<std::string> config_path;
+	for (int i = 1; i < argc; ++i)
 	{
-		args.parse_args(argc, argv);
-	}
-	catch (std::runtime_error& e)
-	{
-		std::cout << e.what() << std::endl;
-		std::exit(EXIT_FAILURE);
+		switch (ParseArg(argv[i]))
+		{
+			case MainArg::CONFIG:
+				++i;
+				if (i >= argc)
+				{
+					std::cout << "--config requires path argument\n";
+					std::exit(EXIT_FAILURE);
+				}
+				config_path = argv[i];
+				break;
+			case MainArg::UNKNOWN:
+				std::cout << "Unknown argument " << i << " '" << argv[i] << "'\n";
+				std::exit(EXIT_FAILURE);
+				break;
+		};
 	}
 
 	std::vector<std::string> reals;
 	std::vector<std::uint32_t> ids;
 	std::vector<std::uint32_t> weights;
 
-	if (std::optional<std::string> path = args.present("--config"))
+	if (config_path)
 	{
-		std::tie(reals, ids, weights) = ReadConfig(path.value());
+		std::tie(reals, ids, weights) = ReadConfig(config_path.value());
 	}
 	else
 	{
@@ -147,7 +165,7 @@ int main(int argc, char* argv[])
 	             "-----------------------------------------------------------\n";
 
 	std::vector<std::pair<std::uint32_t, std::uint32_t>> ids_weights;
-	for (std::size_t i=0; i< reals.size(); ++i)
+	for (std::size_t i = 0; i < reals.size(); ++i)
 	{
 		ids_weights.emplace_back(ids.at(i), weights.at(i));
 	}
