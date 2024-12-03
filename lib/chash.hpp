@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <memory_resource>
@@ -15,108 +16,123 @@
 namespace chash
 {
 
-static constexpr auto RNG_SEED = 42;
+static constexpr std::mt19937::result_type RNG_SEED = 42;
 
-struct RealConfig
+template<typename Config>
+struct BasicRealConfig
 {
-	RealId id;
-	Weight weight;
+	typename Config::Real real;
+	typename Config::RealId id;
+	typename Config::Weight weight;
 };
 
-template<typename Index>
-struct RealInfo
+template<typename Config>
+struct BasicRealInfo
 {
-	std::vector<Index> heads;
-	std::size_t enabled;
-	std::size_t actual;
-	std::size_t desired;
+	std::vector<typename Config::Index> heads;
+	std::size_t enabled = 0;
 };
 
-#if TODO
-class Weight
-{
-	static constexpr max()
-	{
-		return 100;
-	}
-};
-#endif
-
-/* Real has to be comparable (map ordering, collision resolution)*/
-template<typename Real>
-class Chash
+template<typename Config = DefaultConfig>
+class BasicWeightUpdater
 {
 public:
-	static constexpr auto MaxWeight = 100;
-
-protected:
-	using Key = Index;
-	const std::uint8_t lookup_bits_ = 16;
-	const Index lookup_size = 1 << lookup_bits_;
-	const Index lookup_mask = lookup_size - 1;
-	Index slices_per_weight_unit_ = 20;
-	Index full_load_ = slices_per_weight_unit_ * MaxWeight;
-
-	std::pmr::unordered_map<RealId, Real> to_real_;
-	std::pmr::unordered_map<Real, RealId> to_id_;
-
-	// Pool with different matchings from real to hash
-	std::pmr::vector<Unweighted<Real>> unweighted_;
-
-	std::pmr::map<RealId, RealInfo<Index>> info_;
-	std::pmr::vector<RealId> lookup_;
-	std::pmr::vector<bool> enabled_;
-
-	/* @brief Returns number of slices as if they were fairly distributed
-	 * between active reals
-	 */
-	std::size_t Fair()
+	using Index = typename Config::Index;
+	using RealId = typename Config::RealId;
+	using Weight = typename Config::Weight;
+	using RealInfo = BasicRealInfo<Config>;
+private:
+	std::size_t segments_per_weight_;
+	std::map<RealId, RealInfo> heads_;
+	std::vector<bool> enabled_;
+	BasicWeightUpdater(std::size_t segments_per_weight) :
+	        segments_per_weight_{segments_per_weight}
 	{
-		return lookup_.size() / to_id_.size();
 	}
 
-	/* @brief disables/enables \id slices one by one until the /weight requirement
-	 * is met
-	 */
-	void UpdateWeight(RealId id, Weight weight)
+public:
+	std::size_t LookupSize() const
 	{
-		auto& info = info_.at(id);
-		info.desired = weight * slices_per_weight_unit_;
-
-		while (info.enabled > info.desired)
-		{
-			DisableSlice(id);
-		}
-
-		while (info.enabled < info.desired)
-		{
-			EnableSlice(id);
-		}
+		return heads_.size() * Config::MaxWeight * segments_per_weight_;
 	}
 
-	/* @brief Colors segments according to enabled heads colors. Expects at least
-	 * single Segment head to be enabled.
-	 */
-	void FillGaps()
+	template<typename Real>
+	static std::optional<BasicWeightUpdater> MakeWeightUpdater(
+	        const std::vector<std::pair<Real, RealId>>& reals,
+	        std::size_t side_rings_count,
+	        std::size_t segments_per_weight)
 	{
-		auto first = std::find(enabled_.begin(), enabled_.end(), true);
-		Index start = std::distance(enabled_.begin(), first);
-		RealId tint = lookup_[start];
-		for (std::size_t i = 0, pos = start;
-		     i < lookup_.size();
-		     ++i, pos = NextRingPosition(lookup_.size(), pos))
+		if (reals.empty() || side_rings_count + segments_per_weight * Config::MaxWeight == 0)
 		{
-			if (enabled_[pos])
+			return std::nullopt;
+		}
+		BasicWeightUpdater updater{segments_per_weight};
+		std::vector<Unweighted<RealId>> unweighted;
+
+		std::mt19937 seq(RNG_SEED);
+		for (std::size_t i = 0; i < side_rings_count; ++i)
+		{
+			auto salt = seq();
+			unweighted.emplace_back(reals, salt);
+		}
+
+		// check occured collisions did not loose us some reals
+		for (auto& [_, id] : reals)
+		{
+			if (!std::any_of(
+			            unweighted.begin(),
+			            unweighted.end(),
+			            [&](const auto& ring) {
+				            return ring.contains(id);
+			            }))
 			{
-				tint = lookup_[pos];
-			}
-			else
-			{
-				lookup_[pos] = tint;
-				info_[tint].actual++;
 			}
 		}
-	};
+
+		std::size_t lookup_size = segments_per_weight * Config::MaxWeight * reals.size();
+		std::uint8_t lookup_bits = PowerOfTwoLowerBound(lookup_size);
+		std::size_t u{};
+		for (std::uint32_t i = 0, pos = 0; i < (std::uint32_t{1} << lookup_bits); ++i, pos = ReverseBits(lookup_bits, i))
+		{
+			if (pos >= lookup_size)
+			{
+				continue;
+			}
+
+			std::optional<RealId> rid;
+
+			/*
+			 * Consistently choose a real from unweightd rings that has less than
+			 * desired segments count: next candidate is previous in the unweighted
+			 * ring. Collisions may result in all the cadidates in current unweighted
+			 * ring being discarded, when this happens search for a valid candidate
+			 * in the next ring.
+			 */
+			while (!rid)
+			{
+				RealId candidate = unweighted[u].Match(i);
+				for (std::size_t j = 0; !rid && j < unweighted[u].size(); ++j)
+				{
+					std::vector<Index>& real_heads = updater.heads_[candidate].heads;
+					if (real_heads.size() < segments_per_weight * Config::MaxWeight)
+					{
+						rid = candidate;
+					}
+					auto sub = unweighted[u].Substitute(candidate);
+					if (!sub)
+					{
+						break;
+					}
+					candidate = sub.value();
+				}
+				u = NextRingPosition(unweighted.size(), u);
+			}
+
+			updater.heads_[rid.value()].heads.push_back(pos);
+		}
+
+		return updater;
+	}
 
 	/* @brief Marks the last enabled cell in the chain of head cells for \id as
 	 * disabled and removes slice from lookup starting at the cell position.
@@ -125,19 +141,16 @@ protected:
 	 * fact that such occurances are comparatively rare and the lower the
 	 * target weight the rarer they become.
 	 */
-	void DisableSlice(RealId id)
+	void DisableSlice(RealId id, RealId* lookup)
 	{
-		auto& donor = info_.at(id);
+		auto& donor = heads_.at(id);
 		auto disable = donor.heads.at(--donor.enabled);
 		std::size_t i{disable};
 		enabled_[disable] = false;
-		RealId tint = lookup_[PrevRingPosition(lookup_size, i)];
-		auto& receiver = info_.at(tint);
-		for (; !enabled_[i]; i = NextRingPosition(lookup_size, i))
+		RealId tint = lookup[PrevRingPosition(LookupSize(), i)];
+		for (; !enabled_[i]; i = NextRingPosition(LookupSize(), i))
 		{
-			receiver.actual++;
-			--donor.actual;
-			lookup_[i] = tint;
+			lookup[i] = tint;
 		}
 	}
 
@@ -145,98 +158,75 @@ protected:
 	 * last enabled as enabled and adds new slice starting at corresponding
 	 * position.
 	 */
-	void EnableSlice(RealId id)
+	void EnableSlice(RealId id, RealId* lookup)
 	{
-		auto& receiver = info_.at(id);
+		auto& receiver = heads_.at(id);
 		auto enable = receiver.heads[receiver.enabled];
-		for (std::size_t i{enable}; !enabled_[i]; i = NextRingPosition(lookup_size, i))
+		for (std::size_t i{enable}; !enabled_[i]; i = NextRingPosition(LookupSize(), i))
 		{
-			++receiver.actual;
-			--info_.at(lookup_[i]).actual;
-			lookup_[i] = id;
+			lookup[i] = id;
 		}
 		++receiver.enabled;
 	}
 
-public:
-	Chash(const std::map<Real, RealConfig>& reals,
-	      std::size_t uwtd_count,
-	      std::uint8_t lookup_bits,
-	      std::pmr::memory_resource* mem = std::pmr::get_default_resource()) :
-	        lookup_bits_{lookup_bits},
-	        to_real_{mem},
-	        to_id_{mem},
-	        unweighted_{mem},
-	        lookup_(lookup_size, std::numeric_limits<RealId>::max(), mem),
-	        enabled_(lookup_size, false, mem)
+	/* @brief disables/enables \id slices one by one until the /weight requirement
+	 * is met
+	 */
+	void UpdateWeight(RealId id, Weight weight, RealId* lookup)
 	{
-		assert(lookup_.size() == lookup_size);
-		assert(lookup_.size() == enabled_.size());
-
-		for (auto& [real, cfg] : reals)
+		if (heads_.find(id) == heads_.end())
 		{
-			info_[cfg.id].desired = cfg.weight * slices_per_weight_unit_;
+			return;
+		}
+		auto& info = heads_.at(id);
+
+		while (info.enabled > weight * segments_per_weight_)
+		{
+			DisableSlice(id, lookup);
 		}
 
-		std::mt19937 seq(RNG_SEED);
-		std::vector<Real> realv;
-		for (auto& [real, cfg] : reals)
+		while (info.enabled < weight * segments_per_weight_)
 		{
-			realv.push_back(real);
-			to_id_[real] = cfg.id;
-			to_real_[cfg.id] = real;
+			EnableSlice(id, lookup);
 		}
+	}
 
-		for (std::size_t i = 0; i < uwtd_count; ++i)
+	void UpdateLookup(const std::vector<std::pair<RealId, Weight>>& reals, RealId* lookup)
+	{
+		for (auto& [id, weight] : reals)
 		{
-			auto salt = seq();
-			unweighted_.emplace_back(realv, salt);
+			UpdateWeight(id, weight, lookup);
 		}
+	}
 
-		std::cout << "Generated unweighted rings." << std::endl;
-
-		std::size_t u{};
-		for (std::uint32_t i = 0, pos = 0; i < lookup_size; ++i, pos = ReverseBits(lookup_bits_, i))
+	void InitLookup(RealId* lookup)
+	{
+		for (auto& [id, info] : heads_)
 		{
-			Real r = unweighted_[u].Match(i);
-			RealId rid = to_id_.at(r);
-			std::vector<Index>& indices = info_[rid].heads;
-			if (indices.size() < full_load_)
+			for (const auto& head : info.heads)
 			{
-				indices.push_back(pos);
-				if (indices.size() < info_[rid].desired)
-				{
-					enabled_[pos] = true;
-					lookup_[pos] = rid;
-					info_[rid].actual++;
-				}
+				lookup[head] = id;
 			}
-			u = NextRingPosition(unweighted_.size(), u);
+			info.enabled = info.heads.size();
 		}
-
-		for (auto& [real, info] : info_)
-		{
-			info.enabled = info.desired;
-		}
-
-		FillGaps();
-
-		std::cout << "Colored lookup ring." << std::endl;
+		enabled_ = std::vector<bool>(LookupSize(), true);
 	}
 
-	void UpdateWeights(std::vector<std::pair<RealId, RealConfig>>& request)
+	void InitLookup(const std::vector<std::pair<RealId, Weight>>& reals, RealId* lookup)
 	{
-		for (auto& [id, cfg] : request)
-		{
-			UpdateWeight(id, cfg);
-		}
-	}
-
-	/* @brief Truncates \idx to lookup ring size and returns corresponding real*/
-	Real Lookup(Key idx)
-	{
-		return to_real_.at(lookup_[idx & lookup_mask]);
+		InitLookup(lookup);
+		UpdateLookup(reals, lookup);
 	}
 };
+
+using WeightUpdater = BasicWeightUpdater<DefaultConfig>;
+
+template<typename Real>
+std::optional<WeightUpdater> MakeWeightUpdater(const std::vector<std::pair<Real, WeightUpdater::RealId>>& reals,
+                                               std::size_t side_rings_count,
+                                               std::size_t segments_per_weight)
+{
+	return WeightUpdater::MakeWeightUpdater(reals, side_rings_count, segments_per_weight);
+}
 
 } // namespace chash

@@ -69,7 +69,7 @@ public:
 		}
 		RealId tint = lookup_[cell];
 		Index len = 1;
-		for (Index i = 0; i < lookup_size; ++i, cell = NextRingPosition(lookup_size, cell))
+		for (Index i = 0; i < lookup_size; ++i, cell = chash::NextRingPosition(lookup_size, cell))
 		{
 			if (lookup_[cell] == tint)
 			{

@@ -4,9 +4,13 @@
 namespace chash
 {
 
-using RealId = std::uint16_t;
-using Index = std::uint32_t;
-using UnweightedIndex = std::uint32_t;
-using Weight = std::uint8_t;
+struct DefaultConfig
+{
+	using RealId = std::uint32_t;
+	using Index = std::uint32_t;
+	using UnweightedIndex = std::uint32_t;
+	using Weight = std::uint32_t;
+	static const Weight MaxWeight = 100;
+};
 
-} //namespace chash
+} // namespace chash

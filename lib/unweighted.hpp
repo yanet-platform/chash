@@ -1,59 +1,89 @@
 #pragma once
 
+#include <algorithm>
 #include <map>
+#include <optional>
 #include <random>
-#include <set>
 #include <vector>
 
-#include "../common/Crc32.h"
+#include "hash.hpp"
 
 namespace chash
 {
 
-using Salt = std::uint32_t; // Salt is what differentiates one Unweighted from another
-using IdHash = std::uint32_t; // IdHash = f(Real, Salt)
-
-template<typename T>
-IdHash Hash(const T& data, IdHash prev)
-{
-	return crc32_fast(static_cast<const void*>(&data), sizeof(data), prev);
-}
-
-template<>
-IdHash Hash(const std::string& data, IdHash prev)
-{
-	return crc32_fast(static_cast<const void*>(data.c_str()), data.size() * sizeof(std::string::value_type), prev);
-}
-
-template<typename Real>
+template<typename RealId>
 class Unweighted
 {
-	std::map<IdHash, Real> to_real_;
-	Salt salt_;
+	std::map<IdHash, RealId> to_id_;
+	std::map<RealId, IdHash> to_hash_;
 
 public:
-	Unweighted(const std::vector<Real>& reals, Salt salt) :
-	        salt_{salt}
+	template<typename Real>
+	Unweighted(const std::vector<std::pair<Real, RealId>>& reals, Salt salt)
 	{
-		for (auto& real : reals)
+		std::map<IdHash, std::size_t> seen;
+		for (std::size_t i = 0; i < reals.size(); ++i)
 		{
-			auto hid = Hash(real, salt);
+			auto& [real, id] = reals[i];
+			auto hid = CalcHash(real, salt);
 			// Real comparing greater wins collision
-			if (to_real_.find(hid) != to_real_.end())
+			if (auto it = to_id_.find(hid); it != to_id_.end())
 			{
-				to_real_[hid] = std::max(to_real_[hid], real);
+				auto& real_old = reals[seen.at(hid)].first;
+				if (real_old < real)
+				{
+					to_id_[hid] = id;
+					seen[hid] = i;
+				}
 			}
 			else
 			{
-				to_real_[hid] = real;
+				to_id_[hid] = id;
+				seen[hid] = i;
 			}
+		}
+
+		for (auto [hash, id]: to_id_)
+		{
+			to_hash_.emplace(id, hash);
 		}
 	}
 
-	Real Match(IdHash hash)
+	RealId Match(IdHash hash)
 	{
-		auto e = to_real_.lower_bound(hash);
-		return (e != to_real_.end()) ? e->second : to_real_.begin()->second;
+		auto e = to_id_.lower_bound(hash);
+		return (e != to_id_.end()) ? e->second : to_id_.begin()->second;
+	}
+
+	std::optional<RealId> Substitute(RealId id)
+	{
+		auto hit = to_hash_.find(id);
+		if (hit == to_hash_.end() || (to_id_.size() == 1))
+		{
+			return std::nullopt;
+		}
+		auto it = to_id_.find(hit->second);
+		if (it == to_id_.begin())
+		{
+			it = to_id_.end();
+		}
+		return std::prev(it)->second;
+	}
+
+	bool contains(RealId id) const
+	{
+		return std::any_of(
+			to_id_.begin(),
+			to_id_.end(),
+			[&](const auto& it){
+				return it.second == id;
+			}
+		);
+	}
+
+	std::size_t size() const
+	{
+		return to_id_.size();
 	}
 };
 

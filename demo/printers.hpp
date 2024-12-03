@@ -1,9 +1,10 @@
 #pragma once
+#include <iostream>
 #include <map>
+#include <sstream>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
-#include <sstream>
 
 class Embrace
 {
@@ -20,8 +21,8 @@ public:
 	}
 };
 
-template<typename...Args>
-std::string Parenthesize(Args&&...args)
+template<typename... Args>
+std::string Parenthesize(Args&&... args)
 {
 	std::stringstream ss;
 	ss << '(';
@@ -31,62 +32,62 @@ std::string Parenthesize(Args&&...args)
 }
 
 template<typename T>
-void Print(const T& x)
+struct Printer
 {
-	std::cout << x;
-}
+	static void Print(const T& t) { std::cout << t; }
+};
 
-template<typename T, typename U>
-void Print(const std::pair<T, U>& p)
+template<typename U, typename V>
+struct Printer<std::pair<U, V>>
 {
-	Embrace r;
-	std::cout << p.first << ", " << p.second;
-}
-
-template<typename T>
-void Print(const typename std::pair<T, std::uint8_t>& val)
-{
-	Embrace r;
-	std::cout << val.first << ", " << +val.second;
-}
+	static void Print(const std::pair<U, V>& p)
+	{
+		Embrace emb;
+		Printer<std::decay_t<U>>::Print(p.first);
+		std::cout << ", ";
+		Printer<std::decay_t<V>>::Print(p.second);
+	}
+};
 
 template<typename C>
 void PrintContainer(const C& c)
 {
-	Embrace r;
-	if (!c.empty())
+	Embrace emb;
+	bool first{true};
+	for (auto& e : c)
 	{
-		auto it = c.begin();
-		Print(*it);
-		++it;
-		for (; it != c.end(); ++it)
+		if (!first)
 		{
 			std::cout << ", ";
-			Print(*it);
 		}
+		else
+		{
+			first = false;
+		}
+		Printer<std::decay_t<decltype(e)>>::Print(e);
 	}
 }
 
+template<typename K, typename V>
+struct Printer<std::map<K, V>>
+{
+	static void Print(const std::map<K, V>& map) { PrintContainer(map); }
+};
+
 template<typename T>
-void Print(const std::vector<T>& vec)
+struct Printer<std::vector<T>>
 {
-	PrintContainer(vec);
-}
+	static void Print(const std::vector<T>& vec) { PrintContainer(vec); }
+};
 
 template<typename K, typename V>
-void Print(const std::map<K, V>& vec)
+struct Printer<std::unordered_map<K, V>>
 {
-	PrintContainer(vec);
-}
+	static void Print(const std::unordered_map<K,V>& uno) { PrintContainer(uno); }
+};
 
-template<typename K, typename V>
-void Print(const std::unordered_map<K, V>& vec)
+template <typename T>
+void Print(const T& t)
 {
-	PrintContainer(vec);
-}
-
-std::ostream& operator<<(std::ostream& os, chash::RealConfig cfg)
-{
-	os << "{" << cfg.id << ", " << static_cast<int>(cfg.weight) << "}";
-	return os;
+	Printer<std::decay_t<T>>::Print(t);
 }
