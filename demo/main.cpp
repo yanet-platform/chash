@@ -22,9 +22,7 @@ ReadConfig(std::string path)
 	           std::vector<std::uint32_t>,
 	           std::vector<std::uint32_t>>
 	        result;
-	std::back_insert_iterator back_real(std::get<0>(result));
-	std::back_insert_iterator back_id(std::get<1>(result));
-	std::back_insert_iterator back_weight(std::get<2>(result));
+	auto& [reals, ids, weights] = result;
 
 	for (std::string line; std::getline(config, line);)
 	{
@@ -45,6 +43,9 @@ ReadConfig(std::string path)
 			std::cout << "Weight out of range\n";
 			std::exit(EXIT_FAILURE);
 		}
+		reals.push_back(real);
+		ids.push_back(id);
+		weights.push_back(weight);
 	}
 	return result;
 }
