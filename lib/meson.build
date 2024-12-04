@@ -9,4 +9,6 @@ chashlib = library('chash', sources)
 
 chash_dep = declare_dependency(link_with: chashlib, include_directories : chash_inc)
 
-subdir('unittest')
+if get_option('tests')
+	subdir('unittest')
+endif
