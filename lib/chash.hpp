@@ -78,6 +78,7 @@ public:
 		// check occured collisions did not loose us some reals
 		for (auto& [_, id] : reals)
 		{
+			GCC_BUG_UNUSED(_);
 			if (!std::any_of(
 			            unweighted.begin(),
 			            unweighted.end(),
