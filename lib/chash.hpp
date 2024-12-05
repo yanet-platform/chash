@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <memory_resource>
 #include <random>
 #include <unordered_map>
 #include <vector>
