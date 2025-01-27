@@ -1,7 +1,9 @@
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 
 #include "chash.hpp"
 #include "report.hpp"
@@ -185,9 +187,9 @@ std::unordered_map<std::uint32_t, std::size_t> CellCount(const std::vector<std::
 	return cells;
 }
 
-void MaxError(const std::vector<std::uint32_t>& ids,
-              const std::vector<std::uint32_t>& weights,
-              const std::vector<std::uint32_t>& lookup)
+double MaxError(const std::vector<std::uint32_t>& ids,
+                const std::vector<std::uint32_t>& weights,
+                const std::vector<std::uint32_t>& lookup)
 {
 	auto dist = CellCount(lookup);
 	std::size_t requesttotal = std::accumulate(weights.cbegin(),
@@ -203,7 +205,161 @@ void MaxError(const std::vector<std::uint32_t>& ids,
 		double delta = std::abs(got - requested);
 		emax = std::max(emax, delta / requested);
 	}
-	std::cout << emax;
+	return emax;
+}
+
+class IpV6Address
+{
+	std::array<std::uint8_t, 16> data_;
+
+public:
+	static std::optional<IpV6Address> FromString(std::string_view sw)
+	{
+		
+	}
+
+	std::array<std::uint8_t, 16>& Data()
+	{
+		return data_;
+	}
+
+	std::size_t Hash() const
+	{
+		const std::uint64_t* d = reinterpret_cast<const std::uint64_t*>(data_.data());
+		return d[0] ^ (d[1] << 1);
+	}
+
+	bool operator<(const IpV6Address& other) const
+	{
+		for (std::size_t i = 0; i < data_.size(); ++i)
+		{
+			if (data_[i] > other.data_[i])
+			{
+				return false;
+			}
+		}
+		return data_.back() != other.data_.back();
+	}
+
+	bool operator==(const IpV6Address& other) const
+	{
+		for (std::size_t i = 0; i < data_.size(); ++i)
+		{
+			if (data_[i] != other.data_[i])
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+};
+
+template<>
+struct std::hash<IpV6Address>
+{
+	std::size_t operator()(const IpV6Address& s) const noexcept
+	{
+		return s.Hash();
+	}
+};
+
+class IpV6Gen
+{
+	std::mt19937_64 rg_;
+	std::vector<IpV6Address> provided_;
+	std::unordered_set<IpV6Address> used_;
+
+public:
+	IpV6Gen(const std::set<IpV6Address>& predefined) :
+	        rg_{std::random_device{}()},
+	        provided_{predefined.begin(), predefined.end()}
+	{
+		std::shuffle(provided_.begin(), provided_.end(), std::mt19937(std::random_device{}()));
+	}
+
+	IpV6Address Unique()
+	{
+		IpV6Address ip;
+		if (!provided_.empty())
+		{
+			ip = provided_.back();
+			provided_.pop_back();
+			used_.insert(ip);
+		}
+		else
+		{
+			ip = Random();
+			while (!used_.insert(ip).second)
+			{
+				ip = Random();
+			}
+		}
+		return ip;
+	}
+
+	IpV6Address Random()
+	{
+		IpV6Address addr;
+		std::uint64_t* d = reinterpret_cast<std::uint64_t*>(addr.Data().data());
+		d[0] = rg_();
+		d[1] = rg_();
+		return addr;
+	}
+};
+
+std::set<IpV6Address> ParseIpV6Set(std::istream& iplist)
+{
+	std::set<IpV6Address> ipset;
+	std::string s;
+	while (iplist)
+	{
+		iplist >> s;
+		auto mbip = IpV6Address::FromString(s);
+		if (mbip)
+		{
+			ipset.insert(mbip.value());
+		}
+		else
+		{
+			std::cerr << "Expected IpV6Address, got '" << s << "'\n";
+		}
+	}
+	return ipset;
+}
+
+void MaxErrorSeries(std::size_t step, std::size_t limit, std::size_t mappings, std::size_t cells, const std::set<IpV6Address>& ipset)
+{
+	std::vector<double> error;
+
+	IpV6Gen gen(ipset);
+	std::vector<std::pair<IpV6Address, std::uint32_t>> real_ids = {{gen.Unique(), 1}};
+	std::vector<std::uint32_t> ids{1};
+	std::vector<std::uint32_t> weights{1};
+
+	while (real_ids.size() < limit)
+	{
+		auto oupdater = chash::MakeWeightUpdater(real_ids, mappings, cells);
+
+		if (!oupdater)
+		{
+			std::cerr << "Failed to build updater\n";
+			std::exit(EXIT_FAILURE);
+		}
+		auto& updater = oupdater.value();
+
+		std::vector<std::uint32_t> lookup(updater.LookupSize(), std::numeric_limits<std::uint32_t>::max());
+
+		updater.InitLookup(lookup.data());
+
+		error.push_back(MaxError(ids, weights, lookup));
+
+		for (std::size_t i = 0; i < step; ++i)
+		{
+			real_ids.emplace_back(gen.Unique(), real_ids.size() + 1);
+			ids.push_back(real_ids.size());
+			weights.push_back(100);
+		}
+	}
 }
 
 int main(int argc, char* argv[])
@@ -299,7 +455,6 @@ int main(int argc, char* argv[])
 	std::vector<std::uint32_t> ids;
 	std::vector<std::uint32_t> weights;
 
-
 	switch (config_source)
 	{
 		case ConfigSource::FILE:
@@ -319,7 +474,7 @@ int main(int argc, char* argv[])
 	for (std::size_t i = 0; i < reals.size(); ++i)
 	{
 		real_ids.emplace_back(reals.at(i), ids.at(i));
-		//std::cout << reals.at(i) << " " << ids.at(i) << weights.at(i) << "\n";
+		// std::cout << reals.at(i) << " " << ids.at(i) << weights.at(i) << "\n";
 	}
 
 	auto oupdater = chash::MakeWeightUpdater(real_ids, mappings, cells);
@@ -338,7 +493,7 @@ int main(int argc, char* argv[])
 	switch (cmd)
 	{
 		case Command::MAXERROR:
-			MaxError(ids, weights, lookup);
+			std::cout << MaxError(ids, weights, lookup);
 			break;
 		default:
 		{

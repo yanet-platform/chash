@@ -83,5 +83,5 @@ def Plot1100MaxError():
     plt.plot(res)
     plt.show()
 
-Plot1100MaxError()
-# PlotXCellsYMappingsMaxError()
+# Plot1100MaxError()
+PlotXCellsYMappingsMaxError()
