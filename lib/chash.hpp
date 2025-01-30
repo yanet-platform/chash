@@ -43,7 +43,7 @@ public:
 
 private:
 	std::size_t segments_per_weight_;
-	std::map<RealId, RealInfo> heads_;
+	std::unordered_map<RealId, RealInfo> heads_;
 	std::vector<bool> is_enabled_;
 	std::size_t enabled_count_;
 	BasicWeightUpdater(std::size_t segments_per_weight) :
