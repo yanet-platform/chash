@@ -1,4 +1,5 @@
 #include <array>
+#include <charconv>
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -99,6 +100,7 @@ static constexpr std::string_view FLAG_MAPPINGS = "--mappings"sv;
 static constexpr std::string_view FLAG_MAPPINGS_SHORT = "-m"sv;
 
 static constexpr std::string_view CMD_REPORT_MAXERROR = "maxerror";
+static constexpr std::string_view CMD_REPORT_MAXERROR_SERIES = "maxerrorseries";
 
 static constexpr std::size_t DEFAULT_CELLS_PER_WEIGHT = 20;
 static constexpr std::size_t DEFAULT_MAPPINGS = 20000;
@@ -122,6 +124,7 @@ enum class ConfigSource
 enum class Command
 {
 	MAXERROR,
+	MAXERRORSERIES,
 	NONE
 };
 
@@ -174,6 +177,10 @@ std::optional<Command> ParseCmd(const char* str)
 	{
 		return Command::MAXERROR;
 	}
+	if (str == CMD_REPORT_MAXERROR_SERIES)
+	{
+		return Command::MAXERRORSERIES;
+	}
 
 	return std::nullopt;
 }
@@ -211,15 +218,111 @@ double MaxError(const std::vector<std::uint32_t>& ids,
 
 class IpV6Address
 {
-	std::array<std::uint8_t, 16> data_;
+	std::array<std::uint16_t, 8> data_;
 
 public:
+	IpV6Address() = default;
+	IpV6Address(const IpV6Address& other) :
+	        data_ { other.data_ }
+	{
+	}
+	static constexpr std::string_view GAP_TOKEN = "::";
+	static constexpr std::string_view::value_type DELIM_TOKEN = ':';
 	static std::optional<IpV6Address> FromString(std::string_view sw)
 	{
-		
+		IpV6Address ip;
+		auto& data = ip.data_;
+
+		auto gap = sw.find(GAP_TOKEN);
+		std::string_view left = sw.substr(0, gap);
+
+		std::size_t i = 0;
+		// Parse left
+		for (; i < data.size(); ++i)
+		{
+			auto [ptr, ec] = std::from_chars(left.data(), left.data() + left.size(), data.at(i), 16);
+
+			if (ec == std::errc::invalid_argument)
+			{
+				return std::nullopt;
+			}
+
+			left.remove_prefix(std::distance(left.data(), ptr));
+			if (!left.empty())
+			{
+				if (left.front() == DELIM_TOKEN)
+				{
+					left.remove_prefix(1);
+				}
+				else
+				{
+					return std::nullopt;
+				}
+			}
+			else
+			{
+				++i;
+				break;
+			}
+		}
+
+		if (gap == std::string::npos)
+		{
+			if (i == data.size())
+			{
+				return ip;
+			}
+			else
+			{
+				return std::nullopt;
+			}
+		}
+
+		std::string_view right = sw.substr(gap + 2);
+
+		// Gap
+		auto rlen = std::count(right.begin(), right.end(), DELIM_TOKEN);
+		if (i + rlen > data.size())
+		{
+			return std::nullopt;
+		}
+		for (auto gend = data.size() - rlen; i < gend; ++i)
+		{
+			data.at(i) = 0;
+		}
+
+		// Parse right
+		for (; i < data.size(); ++i)
+		{
+			auto [ptr, ec] = std::from_chars(right.data(), right.data() + right.size(), data.at(i), 16);
+
+			if (ec == std::errc::invalid_argument)
+			{
+				return std::nullopt;
+			}
+
+			right.remove_prefix(std::distance(right.data(), ptr));
+			if (!right.empty())
+			{
+				if (right.front() == DELIM_TOKEN)
+				{
+					right.remove_prefix(1);
+				}
+				else
+				{
+					return std::nullopt;
+				}
+			}
+			else
+			{
+				break;
+			}
+		}
+
+		return ip;
 	}
 
-	std::array<std::uint8_t, 16>& Data()
+	std::array<std::uint16_t, 8>& Data()
 	{
 		return data_;
 	}
@@ -234,12 +337,12 @@ public:
 	{
 		for (std::size_t i = 0; i < data_.size(); ++i)
 		{
-			if (data_[i] > other.data_[i])
+			if (data_[i] != other.data_[i])
 			{
-				return false;
+				return data_[i] < other.data_[i];
 			}
 		}
-		return data_.back() != other.data_.back();
+		return false;
 	}
 
 	bool operator==(const IpV6Address& other) const
@@ -339,6 +442,7 @@ void MaxErrorSeries(std::size_t step, std::size_t limit, std::size_t mappings, s
 
 	while (real_ids.size() < limit)
 	{
+		std::cerr << real_ids.size() << "\n";
 		auto oupdater = chash::MakeWeightUpdater(real_ids, mappings, cells);
 
 		if (!oupdater)
@@ -361,6 +465,18 @@ void MaxErrorSeries(std::size_t step, std::size_t limit, std::size_t mappings, s
 			weights.push_back(100);
 		}
 	}
+}
+
+std::set<IpV6Address> ReadIPSet()
+{
+	std::ifstream config("../reals.only");
+	std::set<IpV6Address> ipset;
+	if (!config.is_open())
+	{
+		std::cout << "Failed to open reals file.\n";
+		std::exit(EXIT_FAILURE);
+	}
+	return ParseIpV6Set(config);
 }
 
 int main(int argc, char* argv[])
@@ -493,6 +609,12 @@ int main(int argc, char* argv[])
 
 	switch (cmd)
 	{
+		case Command::MAXERRORSERIES:
+		{
+			auto ipset = ReadIPSet();
+			MaxErrorSeries(10, 300, 100, 20, ipset);
+		}
+		break;
 		case Command::MAXERROR:
 			std::cout << MaxError(ids, weights, lookup);
 			break;
