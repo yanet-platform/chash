@@ -43,7 +43,7 @@ public:
 
 private:
 	std::size_t segments_per_weight_;
-	std::unordered_map<RealId, RealInfo> heads_;
+	std::map<RealId, RealInfo> heads_;
 	std::vector<bool> is_enabled_;
 	std::size_t enabled_count_;
 	BasicWeightUpdater(std::size_t segments_per_weight) :
@@ -59,41 +59,33 @@ public:
 
 	template<typename Real>
 	static std::optional<BasicWeightUpdater> MakeWeightUpdater(
-	        const std::vector<std::pair<Real, RealId>>& reals,
+	        const std::vector<std::pair<Real, RealId>>& reals_list,
 	        std::size_t side_rings_count,
 	        std::size_t segments_per_weight)
 	{
-		if (reals.empty() || side_rings_count + segments_per_weight * Config::MaxWeight == 0)
+		const std::size_t segments_per_rid = segments_per_weight * Config::MaxWeight;
+		std::unordered_map<RealId, Real> reals;
+		for (const auto& [real, id]: reals_list)
+		{
+			reals.emplace(id, real);
+		}
+
+		if (reals.empty() || side_rings_count + segments_per_rid == 0)
 		{
 			return std::nullopt;
 		}
 		BasicWeightUpdater updater{segments_per_weight};
-		std::vector<Unweighted<RealId>> unweighted;
 
 		std::mt19937 seq(RNG_SEED);
-		for (std::size_t i = 0; i < side_rings_count; ++i)
-		{
-			auto salt = seq();
-			unweighted.emplace_back(reals, salt);
-		}
 
-		// check occured collisions did not loose us some reals
-		for (auto& [_, id] : reals)
+		std::size_t lookup_size = segments_per_rid * reals.size();
+		std::size_t lookups_per_unweighted = lookup_size / side_rings_count;
+		if (lookup_size % side_rings_count != 0)
 		{
-			GCC_BUG_UNUSED(_);
-			if (!std::any_of(
-			            unweighted.begin(),
-			            unweighted.end(),
-			            [&](const auto& ring) {
-				            return ring.contains(id);
-			            }))
-			{
-			}
+			++lookups_per_unweighted;
 		}
-
-		std::size_t lookup_size = segments_per_weight * Config::MaxWeight * reals.size();
 		std::uint8_t lookup_bits = PowerOfTwoLowerBound(lookup_size);
-		std::size_t u{};
+		Unweighted<RealId> unweighted;
 		for (std::uint32_t i = 0, pos = 0; i < (std::uint32_t{1} << lookup_bits); ++i, pos = ReverseBits(lookup_bits, i))
 		{
 			if (pos >= lookup_size)
@@ -101,36 +93,21 @@ public:
 				continue;
 			}
 
-			std::optional<RealId> rid;
-
-			/*
-			 * Consistently choose a real from unweightd rings that has less than
-			 * desired segments count: next candidate is previous in the unweighted
-			 * ring. Collisions may result in all the cadidates in current unweighted
-			 * ring being discarded, when this happens search for a valid candidate
-			 * in the next ring.
-			 */
-			while (!rid)
+			if (i % lookups_per_unweighted == 0 || unweighted.empty())
 			{
-				RealId candidate = unweighted[u].Match(i);
-				for (std::size_t j = 0; !rid && j < unweighted[u].size(); ++j)
-				{
-					std::vector<Index>& real_heads = updater.heads_[candidate].heads;
-					if (real_heads.size() < segments_per_weight * Config::MaxWeight)
-					{
-						rid = candidate;
-					}
-					auto sub = unweighted[u].Substitute(candidate);
-					if (!sub)
-					{
-						break;
-					}
-					candidate = sub.value();
-				}
-				u = NextRingPosition(unweighted.size(), u);
+				unweighted = Unweighted(reals, seq());
 			}
 
-			updater.heads_[rid.value()].heads.push_back(pos);
+
+			RealId rid = unweighted.Match(i);
+			updater.heads_[rid].heads.push_back(pos);
+
+			std::vector<Index>& real_heads = updater.heads_[rid].heads;
+			if (real_heads.size() == segments_per_rid)
+			{
+				reals.erase(rid);
+				unweighted.erase(rid);
+			}
 		}
 
 		return updater;
