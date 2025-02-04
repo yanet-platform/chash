@@ -94,6 +94,7 @@ public:
 		std::size_t lookup_size = segments_per_weight * Config::MaxWeight * reals.size();
 		std::uint8_t lookup_bits = PowerOfTwoLowerBound(lookup_size);
 		std::size_t u{};
+		std::uint32_t distributed{};
 		for (std::uint32_t i = 0, pos = 0; i < (std::uint32_t{1} << lookup_bits); ++i, pos = ReverseBits(lookup_bits, i))
 		{
 			if (pos >= lookup_size)
@@ -101,42 +102,73 @@ public:
 				continue;
 			}
 
-			std::optional<RealId> rid;
+			RealId rid = unweighted[u].Match(i);
+			updater.heads_[rid].heads.push_back(pos);
+			u = NextRingPosition(unweighted.size(), u);
+			++distributed;
 
-			/*
-			 * Consistently choose a real from unweightd rings that has less than
-			 * desired segments count: next candidate is previous in the unweighted
-			 * ring. Collisions may result in all the cadidates in current unweighted
-			 * ring being discarded, when this happens search for a valid candidate
-			 * in the next ring.
-			 */
-			while (!rid)
+			if (distributed % (segments_per_weight * reals.size()) == 0)
 			{
-				RealId candidate = unweighted[u].Match(i);
-				for (std::size_t j = 0; !rid && j < unweighted[u].size(); ++j)
-				{
-					std::vector<Index>& real_heads = updater.heads_[candidate].heads;
-					if (real_heads.size() < segments_per_weight * Config::MaxWeight)
-					{
-						rid = candidate;
-					}
-					auto sub = unweighted[u].Substitute(candidate);
-					if (!sub)
-					{
-						break;
-					}
-					candidate = sub.value();
-				}
-				u = NextRingPosition(unweighted.size(), u);
+				updater.Rebalance(distributed / updater.heads_.size());
 			}
-
-			updater.heads_[rid.value()].heads.push_back(pos);
 		}
 
 		return updater;
 	}
 
 private:
+	void Rebalance(std::size_t target)
+	{
+		std::vector<RealId> low;
+		std::vector<RealId> high;
+		for (auto& [id, info] : heads_)
+		{
+			if (info.heads.size() > target)
+			{
+				high.emplace_back(id);
+			}
+			else if (info.heads.size() < target)
+			{
+				low.emplace_back(id);
+			}
+		}
+
+		if (low.empty() || high.empty())
+		{
+			return;
+		}
+
+		auto l = low.begin();
+		auto h = high.begin();
+		auto& recip = heads_.at(*l).heads;
+		auto& donor = heads_.at(*h).heads;
+		while (l != low.end())
+		{
+
+			recip.push_back(donor.back());
+			donor.pop_back();
+
+			if (recip.size() == target)
+			{
+				++l;
+				if (l == low.end())
+				{
+					break;
+				}
+				recip = heads_.at(*l).heads;
+			}
+			if (donor.size() == target)
+			{
+				++h;
+				if (h == high.end())
+				{
+					break;
+				}
+				donor = heads_.at(*h).heads;
+			}
+		}
+	}
+
 	/* @brief Marks the last enabled cell in the chain of head cells for \id as
 	 * disabled and removes slice from lookup starting at the cell position.
 	 * this is done by combining it with the slice to immediate left. Doesn't
