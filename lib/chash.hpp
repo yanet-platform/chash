@@ -88,6 +88,7 @@ public:
 				            return ring.contains(id);
 			            }))
 			{
+				return std::nullopt;
 			}
 		}
 
@@ -102,7 +103,7 @@ public:
 				continue;
 			}
 
-			RealId rid = unweighted[u].Match(i);
+			RealId rid = unweighted[u].Match(seq());
 			updater.heads_[rid].heads.push_back(pos);
 			u = NextRingPosition(unweighted.size(), u);
 			++distributed;
@@ -140,31 +141,27 @@ private:
 
 		auto l = low.begin();
 		auto h = high.begin();
-		auto& recip = heads_.at(*l).heads;
-		auto& donor = heads_.at(*h).heads;
 		while (l != low.end())
 		{
 
-			recip.push_back(donor.back());
-			donor.pop_back();
+			heads_.at(*l).heads.push_back(heads_.at(*h).heads.back());
+			heads_.at(*h).heads.pop_back();
 
-			if (recip.size() == target)
+			if (heads_.at(*l).heads.size() == target)
 			{
 				++l;
 				if (l == low.end())
 				{
 					break;
 				}
-				recip = heads_.at(*l).heads;
 			}
-			if (donor.size() == target)
+			if (heads_.at(*h).heads.size() == target)
 			{
 				++h;
 				if (h == high.end())
 				{
 					break;
 				}
-				donor = heads_.at(*h).heads;
 			}
 		}
 	}
