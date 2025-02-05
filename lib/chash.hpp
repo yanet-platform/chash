@@ -44,6 +44,7 @@ public:
 private:
 	std::size_t segments_per_weight_;
 	std::unordered_map<RealId, RealInfo> heads_;
+	std::map<Index, RealId> enabled_;
 	std::vector<bool> is_enabled_;
 	std::size_t enabled_count_;
 	BasicWeightUpdater(std::size_t segments_per_weight) :
@@ -114,6 +115,16 @@ public:
 			if (distributed % (segments_per_weight * cnt) == 0)
 			{
 				updater.Rebalance(distributed / updater.heads_.size());
+			}
+		}
+
+		for (std::size_t i = 0; i < cnt; ++i)
+		{
+			RealInfo info = updater.heads_.at(ids[i]);
+			info.enabled = weights[i] * segments_per_weight;
+			for (std::size_t j = 0; j < info.enabled; ++j)
+			{
+				updater.enabled_[info.heads.at(i)] = ids[i];
 			}
 		}
 
