@@ -216,7 +216,7 @@ class IpV6Address
 public:
 	static std::optional<IpV6Address> FromString(std::string_view sw)
 	{
-		
+		return std::nullopt;
 	}
 
 	std::array<std::uint8_t, 16>& Data()
@@ -333,13 +333,19 @@ void MaxErrorSeries(std::size_t step, std::size_t limit, std::size_t mappings, s
 	std::vector<double> error;
 
 	IpV6Gen gen(ipset);
-	std::vector<std::pair<IpV6Address, std::uint32_t>> real_ids = {{gen.Unique(), 1}};
+	std::vector<IpV6Address> reals{gen.Unique()};
 	std::vector<std::uint32_t> ids{1};
 	std::vector<std::uint32_t> weights{1};
 
-	while (real_ids.size() < limit)
+	while (reals.size() < limit)
 	{
-		auto oupdater = chash::MakeWeightUpdater(real_ids, mappings, cells);
+		auto oupdater = chash::MakeWeightUpdater(
+		        reals.data(),
+		        ids.data(),
+				weights.data(),
+		        reals.size(),
+		        mappings,
+		        cells);
 
 		if (!oupdater)
 		{
@@ -356,8 +362,8 @@ void MaxErrorSeries(std::size_t step, std::size_t limit, std::size_t mappings, s
 
 		for (std::size_t i = 0; i < step; ++i)
 		{
-			real_ids.emplace_back(gen.Unique(), real_ids.size() + 1);
-			ids.push_back(real_ids.size());
+			reals.emplace_back(gen.Unique());
+			ids.push_back(reals.size());
 			weights.push_back(100);
 		}
 	}
@@ -467,7 +473,7 @@ int main(int argc, char* argv[])
 		case ConfigSource::IMAGINATION:
 			reals = {"alpha", "beta", "gamma", "delta", "epsilon", "sigma", "theta", "omega", "more"};
 			ids = {0, 1, 2, 3, 4, 5, 6, 7, 8};
-			weights = {100, 100, 50, 10, 1, 100, 100, 100, 100};
+			weights = {1, 1, 1, 1, 10, 1, 1, 1, 1};
 			break;
 	}
 
@@ -478,7 +484,12 @@ int main(int argc, char* argv[])
 		// std::cout << reals.at(i) << " " << ids.at(i) << weights.at(i) << "\n";
 	}
 
-	auto oupdater = chash::MakeWeightUpdater(real_ids, mappings, cells);
+	auto oupdater = chash::MakeWeightUpdater(reals.data(),
+	                                         ids.data(),
+	                                         weights.data(),
+	                                         reals.size(),
+	                                         mappings,
+	                                         cells);
 
 	if (!oupdater)
 	{
@@ -494,7 +505,8 @@ int main(int argc, char* argv[])
 	switch (cmd)
 	{
 		case Command::MAXERROR:
-			std::cout << MaxError(ids, weights, lookup);
+			// updater.UpdateLookup();
+			std::cout << MaxError(ids, weights, lookup) << std::endl;
 			break;
 		default:
 		{

@@ -19,17 +19,22 @@ class Unweighted
 
 public:
 	template<typename Real>
-	Unweighted(const std::vector<std::pair<Real, RealId>>& reals, Salt salt)
+	Unweighted(
+	        const Real* reals,
+	        const RealId* ids,
+	        std::size_t cnt,
+	        Salt salt)
 	{
 		std::map<IdHash, std::size_t> seen;
-		for (std::size_t i = 0; i < reals.size(); ++i)
+		for (std::size_t i = 0; i < cnt; ++i)
 		{
-			auto& [real, id] = reals[i];
+			const Real& real = reals[i];
+			const RealId& id = ids[i];
 			auto hid = CalcHash(real, salt);
 			// Real comparing greater wins collision
 			if (auto it = to_id_.find(hid); it != to_id_.end())
 			{
-				auto& real_old = reals[seen.at(hid)].first;
+				auto& real_old = reals[seen.at(hid)];
 				if (real_old < real)
 				{
 					to_id_[hid] = id;
@@ -43,7 +48,7 @@ public:
 			}
 		}
 
-		for (auto [hash, id]: to_id_)
+		for (auto [hash, id] : to_id_)
 		{
 			to_hash_.emplace(id, hash);
 		}
@@ -55,30 +60,14 @@ public:
 		return (e != to_id_.end()) ? e->second : to_id_.begin()->second;
 	}
 
-	std::optional<RealId> Substitute(RealId id)
-	{
-		auto hit = to_hash_.find(id);
-		if (hit == to_hash_.end() || (to_id_.size() == 1))
-		{
-			return std::nullopt;
-		}
-		auto it = to_id_.find(hit->second);
-		if (it == to_id_.begin())
-		{
-			it = to_id_.end();
-		}
-		return std::prev(it)->second;
-	}
-
 	bool contains(RealId id) const
 	{
 		return std::any_of(
-			to_id_.begin(),
-			to_id_.end(),
-			[&](const auto& it){
-				return it.second == id;
-			}
-		);
+		        to_id_.begin(),
+		        to_id_.end(),
+		        [&](const auto& it) {
+			        return it.second == id;
+		        });
 	}
 
 	std::size_t size() const

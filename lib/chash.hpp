@@ -59,11 +59,15 @@ public:
 
 	template<typename Real>
 	static std::optional<BasicWeightUpdater> MakeWeightUpdater(
-	        const std::vector<std::pair<Real, RealId>>& reals,
+	        const Real* reals,
+	        const RealId* ids,
+	        const Weight* weights,
+	        std::size_t cnt,
+	        // const std::vector<std::pair<Real, RealId>>& reals,
 	        std::size_t side_rings_count,
 	        std::size_t segments_per_weight)
 	{
-		if (reals.empty() || side_rings_count + segments_per_weight * Config::MaxWeight == 0)
+		if (cnt == 0 || side_rings_count + segments_per_weight * Config::MaxWeight == 0)
 		{
 			return std::nullopt;
 		}
@@ -74,25 +78,24 @@ public:
 		for (std::size_t i = 0; i < side_rings_count; ++i)
 		{
 			auto salt = seq();
-			unweighted.emplace_back(reals, salt);
+			unweighted.emplace_back(reals, ids, cnt, salt);
 		}
 
 		// check occured collisions did not loose us some reals
-		for (auto& [_, id] : reals)
+		for (const RealId* pid = ids; pid != ids + cnt; ++pid)
 		{
-			GCC_BUG_UNUSED(_);
 			if (!std::any_of(
 			            unweighted.begin(),
 			            unweighted.end(),
 			            [&](const auto& ring) {
-				            return ring.contains(id);
+				            return ring.contains(*pid);
 			            }))
 			{
 				return std::nullopt;
 			}
 		}
 
-		std::size_t lookup_size = segments_per_weight * Config::MaxWeight * reals.size();
+		std::size_t lookup_size = segments_per_weight * Config::MaxWeight * cnt;
 		std::uint8_t lookup_bits = PowerOfTwoLowerBound(lookup_size);
 		std::size_t u{};
 		std::uint32_t distributed{};
@@ -108,7 +111,7 @@ public:
 			u = NextRingPosition(unweighted.size(), u);
 			++distributed;
 
-			if (distributed % (segments_per_weight * reals.size()) == 0)
+			if (distributed % (segments_per_weight * cnt) == 0)
 			{
 				updater.Rebalance(distributed / updater.heads_.size());
 			}
@@ -243,6 +246,7 @@ public:
 
 	void InitLookup(RealId* lookup)
 	{
+
 		for (auto& [id, info] : heads_)
 		{
 			for (const auto& head : info.heads)
@@ -270,11 +274,21 @@ public:
 using WeightUpdater = BasicWeightUpdater<DefaultConfig>;
 
 template<typename Real>
-std::optional<WeightUpdater> MakeWeightUpdater(const std::vector<std::pair<Real, WeightUpdater::RealId>>& reals,
-                                               std::size_t side_rings_count,
-                                               std::size_t segments_per_weight)
+std::optional<WeightUpdater> MakeWeightUpdater(
+        const Real* reals,
+        const WeightUpdater::RealId* ids,
+        const WeightUpdater::Weight* weights,
+        std::size_t cnt,
+        std::size_t side_rings_count,
+        std::size_t segments_per_weight)
 {
-	return WeightUpdater::MakeWeightUpdater(reals, side_rings_count, segments_per_weight);
+	return WeightUpdater::MakeWeightUpdater(
+	        reals,
+	        ids,
+	        weights,
+	        cnt,
+	        side_rings_count,
+	        segments_per_weight);
 }
 
 } // namespace chash
