@@ -46,16 +46,18 @@ private:
 	std::unordered_map<RealId, RealInfo> heads_;
 	std::map<Index, RealId> enabled_;
 	std::vector<bool> is_enabled_;
+	std::size_t lookup_size_;
 	std::size_t enabled_count_;
-	BasicWeightUpdater(std::size_t segments_per_weight) :
-	        segments_per_weight_{segments_per_weight}
+	BasicWeightUpdater(std::size_t segments_per_weight, std::size_t lookup_size) :
+	        segments_per_weight_{segments_per_weight},
+	        lookup_size_(lookup_size)
 	{
 	}
 
 public:
 	std::size_t LookupSize() const
 	{
-		return heads_.size() * Config::MaxWeight * segments_per_weight_;
+		return lookup_size_;
 	}
 
 	template<typename Real>
@@ -72,7 +74,8 @@ public:
 		{
 			return std::nullopt;
 		}
-		BasicWeightUpdater updater{segments_per_weight};
+		BasicWeightUpdater updater(segments_per_weight,
+		                           cnt * Config::MaxWeight * segments_per_weight);
 		std::vector<Unweighted<RealId>> unweighted;
 
 		std::mt19937 seq(RNG_SEED);
