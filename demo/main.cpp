@@ -73,7 +73,7 @@ std::ostream& operator<<(std::ostream& o, const chash::Unweighted<Real>& ring)
 	o << "Salt: " << ring.salt_;
 	o << " Unweighted: {";
 	auto hid = to_hid.begin();
-	auto print = [](std::ostream& o, decltype(hid) & i) {
+	auto print = [](std::ostream& o, decltype(hid)& i) {
 		o << '{' << i->first << ", " << i->second << '}';
 	};
 	print(o, hid);
@@ -204,7 +204,10 @@ double MaxError(const std::vector<std::uint32_t>& ids,
 		double requested = double(rweight) / requesttotal;
 		double got = double(dist[id]) / lookup.size();
 		double delta = std::abs(got - requested);
-		emax = std::max(emax, delta / requested);
+		if (double n = delta / requested; std::abs(n) > std::abs(emax))
+		{
+			emax = n;
+		}
 	}
 	return emax;
 }
@@ -342,7 +345,7 @@ void MaxErrorSeries(std::size_t step, std::size_t limit, std::size_t mappings, s
 		auto oupdater = chash::MakeWeightUpdater(
 		        reals.data(),
 		        ids.data(),
-				weights.data(),
+		        weights.data(),
 		        reals.size(),
 		        mappings,
 		        cells);
@@ -473,7 +476,7 @@ int main(int argc, char* argv[])
 		case ConfigSource::IMAGINATION:
 			reals = {"alpha", "beta", "gamma", "delta", "epsilon", "sigma", "theta", "omega", "more"};
 			ids = {0, 1, 2, 3, 4, 5, 6, 7, 8};
-			weights = {1, 1, 1, 1, 10, 1, 1, 1, 1};
+			weights = {1, 1, 1, 1, 100, 1, 1, 1, 1};
 			break;
 	}
 

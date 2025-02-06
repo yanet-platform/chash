@@ -29,7 +29,7 @@ template<typename Config>
 struct BasicRealInfo
 {
 	std::vector<typename Config::Index> heads;
-	std::size_t enabled = 0;
+	typename Config::Index enabled = 0;
 };
 
 template<typename Config = DefaultConfig>
@@ -42,20 +42,20 @@ public:
 	using RealInfo = BasicRealInfo<Config>;
 
 private:
-	std::size_t segments_per_weight_;
+	Index segments_per_weight_;
 	std::unordered_map<RealId, RealInfo> heads_;
 	std::map<Index, RealId> enabled_;
 	std::vector<bool> is_enabled_;
-	std::size_t lookup_size_;
+	Index lookup_size_;
 	std::size_t enabled_count_;
-	BasicWeightUpdater(std::size_t segments_per_weight, std::size_t lookup_size) :
+	BasicWeightUpdater(Index segments_per_weight, std::size_t lookup_size) :
 	        segments_per_weight_{segments_per_weight},
 	        lookup_size_(lookup_size)
 	{
 	}
 
 public:
-	std::size_t LookupSize() const
+	Index LookupSize() const
 	{
 		return lookup_size_;
 	}
@@ -65,10 +65,10 @@ public:
 	        const Real* reals,
 	        const RealId* ids,
 	        const Weight* weights,
-	        std::size_t cnt,
+	        Index cnt,
 	        // const std::vector<std::pair<Real, RealId>>& reals,
 	        std::size_t side_rings_count,
-	        std::size_t segments_per_weight)
+	        Index segments_per_weight)
 	{
 		if (cnt == 0 || side_rings_count + segments_per_weight * Config::MaxWeight == 0)
 		{
@@ -102,8 +102,8 @@ public:
 		std::size_t lookup_size = segments_per_weight * Config::MaxWeight * cnt;
 		std::uint8_t lookup_bits = PowerOfTwoLowerBound(lookup_size);
 		std::size_t u{};
-		std::uint32_t distributed{};
-		for (std::uint32_t i = 0, pos = 0; i < (std::uint32_t{1} << lookup_bits); ++i, pos = ReverseBits(lookup_bits, i))
+		Index distributed{};
+		for (Index i = 0, pos = 0; i < (Index{1} << lookup_bits); ++i, pos = ReverseBits(lookup_bits, i))
 		{
 			if (pos >= lookup_size)
 			{
@@ -121,13 +121,13 @@ public:
 			}
 		}
 
-		for (std::size_t i = 0; i < cnt; ++i)
+		for (Index i = 0; i < cnt; ++i)
 		{
 			RealInfo info = updater.heads_.at(ids[i]);
 			info.enabled = weights[i] * segments_per_weight;
 			for (std::size_t j = 0; j < info.enabled; ++j)
 			{
-				updater.enabled_[info.heads.at(i)] = ids[i];
+				updater.enabled_[info.heads.at(j)] = ids[i];
 			}
 		}
 
@@ -135,7 +135,7 @@ public:
 	}
 
 private:
-	void Rebalance(std::size_t target)
+	void Rebalance(Index target)
 	{
 		std::vector<RealId> low;
 		std::vector<RealId> high;
@@ -193,18 +193,26 @@ private:
 	void DisableSlice(RealId id, RealId* lookup)
 	{
 		auto& donor = heads_.at(id);
-		auto disable = donor.heads.at(--donor.enabled);
-		std::size_t i{disable};
-		is_enabled_[disable] = false;
-		if (enabled_count_ == 1)
+		Index disable = donor.heads.at(--donor.enabled);
+		RealId shadow = lookup[(disable ? disable : lookup_size_) - 1];
+		auto headIt = enabled_.find(disable);
+
+		Index stop;
+		if (auto next = std::next(headIt); next != enabled_.end())
 		{
-			return;
+			stop = next->first;
 		}
-		RealId tint = lookup[PrevRingPosition(LookupSize(), i)];
-		for (; !is_enabled_[i] && (lookup[i] != tint); i = NextRingPosition(LookupSize(), i))
+		else
 		{
-			lookup[i] = tint;
+			stop = enabled_.begin()->first;
 		}
+
+		for (Index i = disable; i != stop; i = NextRingPosition(LookupSize(), i))
+		{
+			lookup[i] = shadow;
+		}
+
+		enabled_.erase(headIt);
 	}
 
 	/* @brief Marks the cell in chain of head cells for \id directly past the
@@ -215,13 +223,23 @@ private:
 	{
 		auto& receiver = heads_.at(id);
 		auto enable = receiver.heads[receiver.enabled];
-		is_enabled_[enable] = true;
-		lookup[enable] = id;
-		enable = NextRingPosition(LookupSize(), enable);
-		for (std::size_t i{enable}; !is_enabled_[i] && (lookup[i] != id); i = NextRingPosition(LookupSize(), i))
+		auto headIt = enabled_.find(enable);
+
+		Index stop;
+		if (auto next = std::next(headIt); next != enabled_.end())
+		{
+			stop = next->first;
+		}
+		else
+		{
+			stop = enabled_.begin()->first;
+		}
+
+		for (std::size_t i{enable}; i != stop; i = NextRingPosition(LookupSize(), i))
 		{
 			lookup[i] = id;
 		}
+
 		++receiver.enabled;
 	}
 
@@ -249,6 +267,18 @@ private:
 		}
 	}
 
+	RealId LookupBeginTint()
+	{
+		if (auto it = enabled_.begin(); it->first == 0)
+		{
+			return it->second;
+		}
+		else
+		{
+			return std::prev(enabled_.end())->second;
+		}
+	}
+
 public:
 	void UpdateLookup(const std::vector<std::pair<RealId, Weight>>& reals, RealId* lookup)
 	{
@@ -260,17 +290,26 @@ public:
 
 	void InitLookup(RealId* lookup)
 	{
-
-		for (auto& [id, info] : heads_)
+		if (enabled_.empty())
 		{
-			for (const auto& head : info.heads)
-			{
-				lookup[head] = id;
-			}
-			info.enabled = info.heads.size();
+			return;
 		}
-		is_enabled_ = std::vector<bool>(LookupSize(), true);
-		enabled_count_ = is_enabled_.size();
+
+		Index pos = 0;
+		RealId tint = LookupBeginTint();
+
+		for (auto& [change, id] : enabled_)
+		{
+			for (; pos != change; ++pos)
+			{
+				lookup[pos] = tint;
+			}
+			tint = id;
+		}
+		for (; pos != lookup_size_; ++pos)
+		{
+			lookup[pos] = tint;
+		}
 	}
 
 	void InitLookup(const std::vector<std::pair<RealId, Weight>>& reals, RealId* lookup)
