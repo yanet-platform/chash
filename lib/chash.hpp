@@ -71,16 +71,17 @@ public:
 	        const RealId* ids,
 	        const Weight* weights,
 	        Index cnt,
-	        // const std::vector<std::pair<Real, RealId>>& reals,
-	        std::size_t side_rings_count,
-	        Index segments_per_weight)
+	        Index side_rings_count,
+	        Index segments_per_weight,
+	        Index lookup_size)
 	{
-		if (cnt == 0 || side_rings_count + segments_per_weight * Config::MaxWeight == 0)
+		if (cnt == 0 ||
+		    side_rings_count + segments_per_weight * Config::MaxWeight == 0 ||
+		    lookup_size < side_rings_count + segments_per_weight * Config::MaxWeight)
 		{
 			return std::nullopt;
 		}
-		BasicWeightUpdater updater(segments_per_weight,
-		                           cnt * Config::MaxWeight * segments_per_weight);
+		BasicWeightUpdater updater(segments_per_weight, lookup_size);
 		std::vector<Unweighted<RealId>> unweighted;
 
 		std::mt19937 seq(RNG_SEED);
@@ -90,7 +91,6 @@ public:
 			unweighted.emplace_back(reals, ids, cnt, salt);
 		}
 
-		// check occured collisions did not loose us some reals
 		for (const RealId* pid = ids; pid != ids + cnt; ++pid)
 		{
 			if (!std::any_of(
@@ -104,7 +104,6 @@ public:
 			}
 		}
 
-		std::size_t lookup_size = segments_per_weight * Config::MaxWeight * cnt;
 		std::uint8_t lookup_bits = PowerOfTwoLowerBound(lookup_size);
 		std::size_t u{};
 		Index distributed{};
@@ -336,9 +335,9 @@ std::optional<WeightUpdater> MakeWeightUpdater(
         const Real* reals,
         const WeightUpdater::RealId* ids,
         const WeightUpdater::Weight* weights,
-        std::size_t cnt,
-        std::size_t side_rings_count,
-        std::size_t segments_per_weight)
+        WeightUpdater::Index cnt,
+        WeightUpdater::Index side_rings_count,
+        WeightUpdater::Index segments_per_weight)
 {
 	return WeightUpdater::MakeWeightUpdater(
 	        reals,
@@ -346,7 +345,28 @@ std::optional<WeightUpdater> MakeWeightUpdater(
 	        weights,
 	        cnt,
 	        side_rings_count,
-	        segments_per_weight);
+	        segments_per_weight,
+	        WeightUpdater::LookupRequiredSize(cnt, segments_per_weight));
+}
+
+template<typename Real>
+std::optional<WeightUpdater> MakeWeightUpdater(
+        const Real* reals,
+        const WeightUpdater::RealId* ids,
+        const WeightUpdater::Weight* weights,
+        WeightUpdater::Index cnt,
+        WeightUpdater::Index side_rings_count,
+        WeightUpdater::Index segments_per_weight,
+        WeightUpdater::Index lookup_size)
+{
+	return WeightUpdater::MakeWeightUpdater(
+	        reals,
+	        ids,
+	        weights,
+	        cnt,
+	        side_rings_count,
+	        segments_per_weight,
+	        lookup_size);
 }
 
 } // namespace chash
