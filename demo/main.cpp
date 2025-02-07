@@ -101,6 +101,7 @@ static constexpr std::string_view FLAG_MAPPINGS_SHORT = "-m"sv;
 
 static constexpr std::string_view CMD_REPORT_MAXERROR = "maxerror";
 static constexpr std::string_view CMD_REPORT_MAXERROR_SERIES = "maxerrorseries";
+static constexpr std::string_view CMD_REPORT_OVERLAP = "overlap";
 
 static constexpr std::size_t DEFAULT_CELLS_PER_WEIGHT = 20;
 static constexpr std::size_t DEFAULT_MAPPINGS = 20000;
@@ -123,9 +124,10 @@ enum class ConfigSource
 
 enum class Command
 {
+	NONE,
 	MAXERROR,
 	MAXERRORSERIES,
-	NONE
+	OVERLAP
 };
 
 MainArg ParseArg(const char* str)
@@ -180,6 +182,10 @@ std::optional<Command> ParseCmd(const char* str)
 	if (str == CMD_REPORT_MAXERROR_SERIES)
 	{
 		return Command::MAXERRORSERIES;
+	}
+	if (str == CMD_REPORT_OVERLAP)
+	{
+		return Command::OVERLAP;
 	}
 
 	return std::nullopt;
@@ -487,16 +493,19 @@ void MaxErrorSeries(std::size_t step, std::size_t limit, std::size_t mappings, s
 	}
 }
 
-std::set<IpV6Address> ReadIPSet()
+std::optional<std::set<IpV6Address>> ReadIPSet()
 {
 	std::ifstream config("../reals.only");
 	std::set<IpV6Address> ipset;
 	if (!config.is_open())
 	{
-		std::cout << "Failed to open reals file.\n";
 		std::exit(EXIT_FAILURE);
 	}
 	return ParseIpV6Set(config);
+}
+
+void Overlap(std::set<IpV6Address>& ipset)
+{
 }
 
 int main(int argc, char* argv[])
@@ -632,17 +641,21 @@ int main(int argc, char* argv[])
 
 	updater.InitLookup(lookup.data());
 
+	auto ipset = ReadIPSet();
+
 	switch (cmd)
 	{
 		case Command::MAXERRORSERIES:
 		{
-			auto ipset = ReadIPSet();
-			MaxErrorSeries(10, 300, 100, 20, ipset);
+			MaxErrorSeries(10, 300, 100, 20, ipset.value());
 		}
 		break;
 		case Command::MAXERROR:
 			// updater.UpdateLookup();
 			std::cout << MaxError(ids, weights, lookup) << std::endl;
+			break;
+		case Command::OVERLAP:
+			Overlap(ipset.value());
 			break;
 		default:
 		{
