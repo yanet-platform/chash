@@ -60,6 +60,11 @@ public:
 		return lookup_size_;
 	}
 
+	static Index LookupRequiredSize(Index real_count, Index segments_per_weight)
+	{
+		return real_count * Config::MaxWeight * segments_per_weight;
+	}
+
 	template<typename Real>
 	static std::optional<BasicWeightUpdater> MakeWeightUpdater(
 	        const Real* reals,
