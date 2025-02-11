@@ -15,7 +15,6 @@ template<typename RealId>
 class Unweighted
 {
 	std::map<IdHash, RealId> to_id_;
-	std::map<RealId, IdHash> to_hash_;
 
 public:
 	template<typename Real>
@@ -48,10 +47,6 @@ public:
 			}
 		}
 
-		for (auto [hash, id] : to_id_)
-		{
-			to_hash_.emplace(id, hash);
-		}
 	}
 
 	RealId Match(IdHash hash)
