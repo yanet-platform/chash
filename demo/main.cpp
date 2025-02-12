@@ -102,6 +102,7 @@ static constexpr std::string_view FLAG_MAPPINGS_SHORT = "-m"sv;
 static constexpr std::string_view CMD_REPORT_MAXERROR = "maxerror";
 static constexpr std::string_view CMD_REPORT_MAXERROR_SERIES = "maxerrorseries";
 static constexpr std::string_view CMD_REPORT_OVERLAP = "overlap";
+static constexpr std::string_view CMD_REPORT_MISSING = "missing";
 
 static constexpr std::size_t DEFAULT_CELLS_PER_WEIGHT = 20;
 static constexpr std::size_t DEFAULT_MAPPINGS = 20000;
@@ -127,6 +128,7 @@ enum class Command
 	NONE,
 	MAXERROR,
 	MAXERRORSERIES,
+	MISSING,
 	OVERLAP
 };
 
@@ -186,6 +188,10 @@ std::optional<Command> ParseCmd(const char* str)
 	if (str == CMD_REPORT_OVERLAP)
 	{
 		return Command::OVERLAP;
+	}
+	if (str == CMD_REPORT_MISSING)
+	{
+		return Command::MISSING;
 	}
 
 	return std::nullopt;
@@ -503,9 +509,109 @@ std::optional<std::set<IpV6Address>> ReadIPSet()
 	}
 	return ParseIpV6Set(config);
 }
+using lookup_t = std::vector<std::uint32_t>;
 
-void Overlap(std::set<IpV6Address>& ipset)
+double diff(const lookup_t& a, const lookup_t& b)
 {
+	if (a.size() != b.size())
+	{
+		throw std::invalid_argument{"Mismatched lookups size"};
+	}
+
+	std::size_t mismatch{};
+	std::size_t match{};
+	for (std::size_t i = 0; i < a.size(); ++i)
+	{
+		if (a[i] != b[i])
+		{
+			++mismatch;
+		}
+		else
+		{
+			++match;
+		}
+	}
+
+	return static_cast<double>(mismatch) / a.size();
+}
+
+void Overlap(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint32_t cells)
+{
+	std::size_t cnt = ipset.size();
+	const std::size_t percent = cnt / 100;
+	std::vector<IpV6Address> aset{ipset.begin(), ipset.end()};
+	std::vector<IpV6Address> bset{ipset.rbegin(), ipset.rend()};
+	std::vector<std::uint32_t> aids(cnt, 0);
+	std::iota(aids.begin(), aids.end(), 1);
+	std::vector<std::uint32_t> bids(cnt, 0);
+	std::iota(bids.rbegin(), bids.rend(), 1);
+	std::vector<std::uint32_t> weights(cnt, 100);
+
+	const auto& sz = chash::WeightUpdater::LookupRequiredSize(cnt, cells);
+	std::vector<std::uint32_t> alook(sz, 0);
+	std::vector<std::uint32_t> blook(sz, 0);
+
+	for (std::uint8_t i = 0; i < 50; ++i)
+	{
+		auto apdater = chash::MakeWeightUpdater(
+		        aset.data(), aids.data(), weights.data(), aset.size(), mappings, cells, sz);
+		auto bpdater = chash::MakeWeightUpdater(
+		        bset.data(), bids.data(), weights.data(), bset.size(), mappings, cells, sz);
+
+		if (!apdater || !bpdater)
+		{
+			std::cerr << "Failed to create updater" << std::endl;
+			std::exit(EXIT_FAILURE);
+		}
+
+		std::fill(alook.begin(), alook.end(), std::numeric_limits<std::uint32_t>::max());
+		std::fill(blook.begin(), blook.end(), std::numeric_limits<std::uint32_t>::max() - 1);
+
+		apdater.value().InitLookup(alook.data());
+		bpdater.value().InitLookup(blook.data());
+		std::cout << diff(alook, blook) << '\n';
+
+		for (std::size_t j = 0; j < percent; ++j)
+		{
+			if (aset.empty())
+			{
+				break;
+			}
+			aset.pop_back();
+			bset.pop_back();
+		}
+	}
+}
+
+void Missing(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint32_t cells)
+{
+	std::size_t cnt = ipset.size();
+	std::vector<IpV6Address> aset{ipset.begin(), ipset.end()};
+	std::vector<std::uint32_t> ids(cnt, 0);
+	std::iota(ids.begin(), ids.end(), 1);
+	std::vector<std::uint32_t> weights(cnt, 100);
+
+	const auto& sz = chash::WeightUpdater::LookupRequiredSize(cnt, cells);
+	std::vector<std::uint32_t> alook(sz, 0);
+	std::vector<std::uint32_t> blook(sz, 0);
+
+	auto oapdater = chash::MakeWeightUpdater(
+	        aset.data(), ids.data(), weights.data(), aset.size(), mappings, cells, sz);
+	std::fill(alook.begin(), alook.end(), std::numeric_limits<std::uint32_t>::max());
+	auto& updater = oapdater.value();
+	updater.InitLookup(alook.data());
+
+	updater.InitLookup(blook.data());
+
+	std::vector<std::uint32_t> disable_order{ids.begin(), ids.end()};
+	std::random_shuffle(disable_order.begin(), disable_order.end());
+
+	std::cout <<"0.0;"<< diff(alook, blook) << '\n';
+	for (std::size_t i = 0; i < disable_order.size() - 1; ++i)
+	{
+		updater.UpdateWeight(disable_order.at(i), 0, blook.data());
+		std::cout << double(i + 1) / disable_order.size() << ";" << diff(alook, blook) << '\n';
+	}
 }
 
 int main(int argc, char* argv[])
@@ -623,24 +729,6 @@ int main(int argc, char* argv[])
 		// std::cout << reals.at(i) << " " << ids.at(i) << weights.at(i) << "\n";
 	}
 
-	auto oupdater = chash::MakeWeightUpdater(reals.data(),
-	                                         ids.data(),
-	                                         weights.data(),
-	                                         reals.size(),
-	                                         mappings,
-	                                         cells);
-
-	if (!oupdater)
-	{
-		std::cerr << "Failed to build updater\n";
-		std::exit(EXIT_FAILURE);
-	}
-	auto& updater = oupdater.value();
-
-	std::vector<std::uint32_t> lookup(updater.LookupSize(), std::numeric_limits<std::uint32_t>::max());
-
-	updater.InitLookup(lookup.data());
-
 	auto ipset = ReadIPSet();
 
 	switch (cmd)
@@ -651,14 +739,33 @@ int main(int argc, char* argv[])
 		}
 		break;
 		case Command::MAXERROR:
-			// updater.UpdateLookup();
-			std::cout << MaxError(ids, weights, lookup) << std::endl;
 			break;
 		case Command::OVERLAP:
-			Overlap(ipset.value());
+			Overlap(ipset.value(), mappings, cells);
+			break;
+		case Command::MISSING:
+			Missing(ipset.value(), mappings, cells);
 			break;
 		default:
 		{
+			auto oupdater = chash::MakeWeightUpdater(reals.data(),
+			                                         ids.data(),
+			                                         weights.data(),
+			                                         reals.size(),
+			                                         mappings,
+			                                         cells);
+
+			if (!oupdater)
+			{
+				std::cerr << "Failed to build updater\n";
+				std::exit(EXIT_FAILURE);
+			}
+			auto& updater = oupdater.value();
+
+			std::vector<std::uint32_t> lookup(updater.LookupSize(), std::numeric_limits<std::uint32_t>::max());
+
+			updater.InitLookup(lookup.data());
+
 			std::cout << "-----------------------------------------------------------\n"
 			          << "  Reals requested\n"
 			          << "-----------------------------------------------------------\n";
@@ -688,7 +795,7 @@ int main(int argc, char* argv[])
 			          << "-----------------------------------------------------------\n";
 			Print(ids_weights);
 			std::cout << "\n";
-			updater.UpdateLookup(ids_weights, lookup.data());
+			updater.UpdateLookup(ids.data(), weights.data(), ids.size(), lookup.data());
 			std::cout << "weights: ";
 			report::Weights(lookup);
 			std::cout << "clumps: ";
