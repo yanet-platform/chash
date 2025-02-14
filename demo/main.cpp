@@ -103,6 +103,8 @@ static constexpr std::string_view CMD_REPORT_MAXERROR = "maxerror";
 static constexpr std::string_view CMD_REPORT_MAXERROR_SERIES = "maxerrorseries";
 static constexpr std::string_view CMD_REPORT_OVERLAP = "overlap";
 static constexpr std::string_view CMD_REPORT_MISSING = "missing";
+static constexpr std::string_view CMD_REPORT_YIELD_UNIFORMITY_ABS = "yielduniabs";
+static constexpr std::string_view CMD_REPORT_YIELD_UNIFORMITY_ABS_MAX = "maxyielduniabs";
 
 static constexpr std::size_t DEFAULT_CELLS_PER_WEIGHT = 20;
 static constexpr std::size_t DEFAULT_MAPPINGS = 20000;
@@ -129,7 +131,9 @@ enum class Command
 	MAXERROR,
 	MAXERRORSERIES,
 	MISSING,
-	OVERLAP
+	OVERLAP,
+	YIELD_UNIFORMITY_ABS,
+	YIELD_UNIFORMITY_ABS_MAX
 };
 
 MainArg ParseArg(const char* str)
@@ -192,6 +196,14 @@ std::optional<Command> ParseCmd(const char* str)
 	if (str == CMD_REPORT_MISSING)
 	{
 		return Command::MISSING;
+	}
+	if (str == CMD_REPORT_YIELD_UNIFORMITY_ABS)
+	{
+		return Command::YIELD_UNIFORMITY_ABS;
+	}
+	if (str == CMD_REPORT_YIELD_UNIFORMITY_ABS_MAX)
+	{
+		return Command::YIELD_UNIFORMITY_ABS_MAX;
 	}
 
 	return std::nullopt;
@@ -535,6 +547,25 @@ double diff(const lookup_t& a, const lookup_t& b)
 	return static_cast<double>(mismatch) / a.size();
 }
 
+std::unordered_map<std::uint32_t, std::uint32_t> dist(const lookup_t& a, const lookup_t& b)
+{
+	if (a.size() != b.size())
+	{
+		throw std::invalid_argument{"Mismatched lookups size"};
+	}
+
+	std::unordered_map<std::uint32_t, std::uint32_t> result;
+	for (std::size_t i = 0; i < a.size(); ++i)
+	{
+		if (a[i] != b[i])
+		{
+			++result[b[i]];
+		}
+	}
+
+	return result;
+}
+
 void Overlap(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint32_t cells)
 {
 	std::size_t cnt = ipset.size();
@@ -583,34 +614,142 @@ void Overlap(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint32_t
 	}
 }
 
-void Missing(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint32_t cells)
+auto PrepareUpdater(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint32_t cells, std::uint8_t weight)
 {
 	std::size_t cnt = ipset.size();
 	std::vector<IpV6Address> aset{ipset.begin(), ipset.end()};
+	std::random_shuffle(aset.begin(), aset.end());
 	std::vector<std::uint32_t> ids(cnt, 0);
 	std::iota(ids.begin(), ids.end(), 1);
-	std::vector<std::uint32_t> weights(cnt, 100);
-
+	std::vector<std::uint32_t> weights(cnt, weight);
 	const auto& sz = chash::WeightUpdater::LookupRequiredSize(cnt, cells);
-	std::vector<std::uint32_t> alook(sz, 0);
-	std::vector<std::uint32_t> blook(sz, 0);
-
 	auto oapdater = chash::MakeWeightUpdater(
 	        aset.data(), ids.data(), weights.data(), aset.size(), mappings, cells, sz);
-	std::fill(alook.begin(), alook.end(), std::numeric_limits<std::uint32_t>::max());
-	auto& updater = oapdater.value();
-	updater.InitLookup(alook.data());
+	if (!oapdater)
+	{
+		throw std::runtime_error{"Failed to create updater"};
+	}
+	return oapdater.value();
+}
 
+void Difference(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint32_t cells)
+{
+	const auto& sz = chash::WeightUpdater::LookupRequiredSize(ipset.size(), cells);
+	std::vector<std::uint32_t> alook(sz, 0);
+	std::vector<std::uint32_t> blook(sz, 0);
+	std::fill(alook.begin(), alook.end(), std::numeric_limits<std::uint32_t>::max());
+	std::fill(blook.begin(), blook.end(), std::numeric_limits<std::uint32_t>::max() - 1);
+
+	auto updater = PrepareUpdater(ipset, mappings, cells, 100);
+
+	updater.InitLookup(alook.data());
 	updater.InitLookup(blook.data());
 
-	std::vector<std::uint32_t> disable_order{ids.begin(), ids.end()};
+	std::vector<std::uint32_t> disable_order(ipset.size(), 0);
+	std::iota(disable_order.begin(), disable_order.end(), 1);
 	std::random_shuffle(disable_order.begin(), disable_order.end());
 
-	std::cout <<"0.0;"<< diff(alook, blook) << '\n';
+	std::cout << "0.0;" << diff(alook, blook) << '\n';
 	for (std::size_t i = 0; i < disable_order.size() - 1; ++i)
 	{
 		updater.UpdateWeight(disable_order.at(i), 0, blook.data());
 		std::cout << double(i + 1) / disable_order.size() << ";" << diff(alook, blook) << '\n';
+	}
+}
+
+void DifferenceUniformityAbsolute(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint32_t cells)
+{
+	std::vector<std::uint32_t> ids(ipset.size(), 0);
+	std::iota(ids.begin(), ids.end(), 1);
+	std::vector<std::uint32_t> weights(ipset.size(), 100);
+
+	const auto& sz = chash::WeightUpdater::LookupRequiredSize(ipset.size(), cells);
+	std::vector<std::uint32_t> alook(sz, 0);
+	std::vector<std::uint32_t> blook(sz, 0);
+
+	std::fill(alook.begin(), alook.end(), std::numeric_limits<std::uint32_t>::max());
+
+	auto updater = PrepareUpdater(ipset, mappings, cells, 100);
+
+	updater.InitLookup(alook.data());
+	updater.InitLookup(blook.data());
+	std::size_t norm = alook.size() / ipset.size();
+
+	auto d = dist(alook, blook);
+	auto printrow = [&](std::size_t iteration, double norm) {
+		auto d = dist(alook, blook);
+		std::uint32_t md{};
+		std::uint32_t mit{};
+		std::size_t mid{};
+		for (std::size_t i = 0; i < ids.size(); ++i)
+		{
+			if (d.find(i) != d.end())
+			{
+				if (d[i] >= md)
+				{
+					md = d[i];
+					mit = iteration;
+					mid = i;
+				}
+				if (i % 10 == 0)
+				{
+					std::cout << mit << ";"
+					          << mid << ";"
+					          << (md / norm) << '\n';
+					md = 0;
+				}
+			}
+		}
+	};
+	printrow(0, norm);
+
+	for (std::size_t i = 1; i < ids.size(); ++i)
+	{
+		updater.UpdateWeight(ids.at(ids.size() - i), 0, blook.data());
+		printrow(i, double(alook.size()) / (ids.size() - i));
+	}
+}
+
+void DifferenceUniformityAbsoluteMax(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint32_t cells)
+{
+	std::vector<std::uint32_t> ids(ipset.size(), 0);
+	std::iota(ids.begin(), ids.end(), 1);
+	std::vector<std::uint32_t> weights(ipset.size(), 100);
+
+	const auto& sz = chash::WeightUpdater::LookupRequiredSize(ipset.size(), cells);
+	std::vector<std::uint32_t> alook(sz, 0);
+	std::vector<std::uint32_t> blook(sz, 0);
+
+	std::fill(alook.begin(), alook.end(), std::numeric_limits<std::uint32_t>::max());
+
+	auto updater = PrepareUpdater(ipset, mappings, cells, 100);
+
+	updater.InitLookup(alook.data());
+	updater.InitLookup(blook.data());
+	std::size_t norm = alook.size() / ipset.size();
+
+	auto d = dist(alook, blook);
+	auto printrow = [&](double norm) {
+		auto d = dist(alook, blook);
+		std::uint32_t md{};
+		for (std::size_t i = 0; i < ids.size(); ++i)
+		{
+			if (d.find(i) != d.end())
+			{
+				if (d[i] >= md)
+				{
+					md = d[i];
+				}
+			}
+		}
+		std::cout << (md / norm) << '\n';
+	};
+	printrow(norm);
+
+	for (std::size_t i = 1; i < ids.size(); ++i)
+	{
+		updater.UpdateWeight(ids.at(ids.size() - i), 0, blook.data());
+		printrow(double(alook.size()) / (ids.size() - i));
 	}
 }
 
@@ -726,7 +865,6 @@ int main(int argc, char* argv[])
 	for (std::size_t i = 0; i < reals.size(); ++i)
 	{
 		real_ids.emplace_back(reals.at(i), ids.at(i));
-		// std::cout << reals.at(i) << " " << ids.at(i) << weights.at(i) << "\n";
 	}
 
 	auto ipset = ReadIPSet();
@@ -744,7 +882,13 @@ int main(int argc, char* argv[])
 			Overlap(ipset.value(), mappings, cells);
 			break;
 		case Command::MISSING:
-			Missing(ipset.value(), mappings, cells);
+			Difference(ipset.value(), mappings, cells);
+			break;
+		case Command::YIELD_UNIFORMITY_ABS:
+			DifferenceUniformityAbsolute(ipset.value(), mappings, cells);
+			break;
+		case Command::YIELD_UNIFORMITY_ABS_MAX:
+			DifferenceUniformityAbsoluteMax(ipset.value(),mappings, cells);
 			break;
 		default:
 		{

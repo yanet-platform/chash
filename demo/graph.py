@@ -69,7 +69,7 @@ def GenReal():
 def Plot1100MaxError():
     res = []
     cfg = "weak 1 1\nstrong 2 100\n"
-    for i in range(3,100):
+    for i in range(3, 100):
         print(i)
         print(cfg)
         cfg += f"{GenReal()} {i} 100\n"
@@ -83,5 +83,56 @@ def Plot1100MaxError():
     plt.plot(res)
     plt.show()
 
+
 # Plot1100MaxError()
-PlotXCellsYMappingsMaxError()
+#PlotXCellsYMappingsMaxError()
+
+
+def PlotAbsoluteDifferenceUniformity():
+    pres = subprocess.run(["../build/demo/demo",
+                           "--mappings", "100",
+                           "--cells", "20",
+                           "yielduniabs"],
+                          capture_output=True,
+                          text=True,
+                          check=True)
+    id = []
+    iter = []
+    cnt = []
+    for line in pres.stdout.splitlines():
+        words = line.split(sep=';')
+        iter.append(words[0])
+        id.append(words[1])
+        cnt.append(words[2])
+
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+    surf = ax.plot_trisurf(np.array(id, dtype='float64'), np.array(iter, dtype='float64'), np.array(cnt, dtype='float64'), cmap=cm.coolwarm,
+                           linewidth=1, antialiased=False)
+    #sc = ax.scatter(np.array(id, dtype='float64'), np.array(iter, dtype='float64'), np.array(cnt, dtype='float64'))
+    fig.set_figwidth(5)
+    fig.set_figheight(5)
+    ax.set_xlabel("Ids")
+    ax.set_ylabel("Disabled")
+    plt.show()
+
+def PlotAbsoluteDifferenceUniformityMax():
+    pres = subprocess.run(["../build/demo/demo",
+                           "--mappings", "100",
+                           "--cells", "20",
+                           "maxyielduniabs"],
+                          capture_output=True,
+                          text=True,
+                          check=True)
+    mdiff = []
+    fig, ax = plt.subplots()
+    for line in pres.stdout.splitlines():
+        mdiff.append(line)
+    ax.set_xlabel("Disabled count")
+    ax.set_ylabel("Maximum")
+    ax.plot(np.array(mdiff, dtype='float64'))
+    #print(mdiff)
+    plt.show()
+
+
+#PlotAbsoluteDifferenceUniformity()
+PlotAbsoluteDifferenceUniformityMax()
