@@ -282,6 +282,17 @@ public:
 		}
 	}
 
+	void SetWeights(const RealId* ids, const Weight* weights, Index count)
+	{
+		for (Index i = 0; i < count; ++i)
+		{
+			if (auto h = heads_.find(ids[i]); h != heads_.end())
+			{
+				h->second.enabled = weights[i] * segments_per_weight_;
+			}
+		}
+	}
+
 	void UpdateLookup(const RealId* ids, const Weight* weights, Index count, RealId* lookup)
 	{
 		for (Index i = 0; i < count; ++i)
