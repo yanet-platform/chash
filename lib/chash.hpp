@@ -325,17 +325,6 @@ public:
 			lookup[pos] = tint;
 		}
 	}
-
-	void InitLookup(const std::vector<std::pair<RealId, Weight>>& reals, RealId* lookup)
-	{
-		InitLookup(lookup);
-		if (std::find_if_not(reals.cbegin(), reals.cend(), [](const auto& r) {
-			    return r.second == 0;
-		    }) != reals.cend())
-		{
-			UpdateLookup(reals, lookup);
-		}
-	}
 };
 
 using WeightUpdater = BasicWeightUpdater<DefaultConfig>;
