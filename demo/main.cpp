@@ -248,11 +248,6 @@ class IpV6Address
 	std::array<std::uint16_t, 8> data_;
 
 public:
-	IpV6Address() = default;
-	IpV6Address(const IpV6Address& other) :
-	        data_{other.data_}
-	{
-	}
 	static constexpr std::string_view GAP_TOKEN = "::";
 	static constexpr std::string_view::value_type DELIM_TOKEN = ':';
 	static std::optional<IpV6Address> FromString(std::string_view sw)
