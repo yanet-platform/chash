@@ -768,6 +768,21 @@ void DifferenceUniformityAbsoluteMax(std::set<IpV6Address>& ipset, std::uint32_t
 	}
 }
 
+void EffectiveWeightsByWeight(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint32_t cells)
+{
+	std::vector<std::uint32_t> ids(ipset.size(), 0);
+	std::iota(ids.begin(), ids.end(), 1);
+
+	const auto& sz = chash::WeightUpdater::LookupRequiredSize(ipset.size(), cells);
+	std::vector<std::uint32_t> alook(sz, 0);
+
+	std::fill(alook.begin(), alook.end(), std::numeric_limits<std::uint32_t>::max());
+
+	auto updater = PrepareUpdater(ipset, mappings, cells, 100);
+
+	updater.InitLookup(alook.data());
+}
+
 int main(int argc, char* argv[])
 {
 	ConfigSource config_source{ConfigSource::IMAGINATION};
