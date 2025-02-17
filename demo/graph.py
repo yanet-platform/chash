@@ -3,7 +3,9 @@ import random
 import string
 import subprocess
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
+from io import StringIO
 from matplotlib import cm
 
 
@@ -85,7 +87,7 @@ def Plot1100MaxError():
 
 
 # Plot1100MaxError()
-#PlotXCellsYMappingsMaxError()
+# PlotXCellsYMappingsMaxError()
 
 
 def PlotAbsoluteDifferenceUniformity():
@@ -108,12 +110,13 @@ def PlotAbsoluteDifferenceUniformity():
     fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
     surf = ax.plot_trisurf(np.array(id, dtype='float64'), np.array(iter, dtype='float64'), np.array(cnt, dtype='float64'), cmap=cm.coolwarm,
                            linewidth=1, antialiased=False)
-    #sc = ax.scatter(np.array(id, dtype='float64'), np.array(iter, dtype='float64'), np.array(cnt, dtype='float64'))
+    # sc = ax.scatter(np.array(id, dtype='float64'), np.array(iter, dtype='float64'), np.array(cnt, dtype='float64'))
     fig.set_figwidth(5)
     fig.set_figheight(5)
     ax.set_xlabel("Ids")
     ax.set_ylabel("Disabled")
     plt.show()
+
 
 def PlotAbsoluteDifferenceUniformityMax():
     pres = subprocess.run(["../build/demo/demo",
@@ -124,15 +127,41 @@ def PlotAbsoluteDifferenceUniformityMax():
                           text=True,
                           check=True)
     mdiff = []
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(16, 9))
     for line in pres.stdout.splitlines():
-        mdiff.append(line)
+        mdiff.append(float(line))
+    ax.grid()
+    ax.set_title("Maximum weight added as fraction of own fair weight")
     ax.set_xlabel("Disabled count")
     ax.set_ylabel("Maximum")
-    ax.plot(np.array(mdiff, dtype='float64'))
-    #print(mdiff)
+    ax.set_xlim(left=0)
+    ax.plot(mdiff)
+    ax.plot([0, len(mdiff)], [0, 1], marker='o', linestyle='--', color='green')
+    # ax.plot(np.array(mdiff, dtype='float64'))
+    # print(mdiff)
     plt.show()
 
 
-#PlotAbsoluteDifferenceUniformity()
-PlotAbsoluteDifferenceUniformityMax()
+def PlotMissing():
+    pres = subprocess.run(["../build/demo/demo",
+                           "--mappings", "100",
+                           "--cells", "20",
+                           "missing"],
+                          capture_output=True,
+                          text=True,
+                          check=True)
+    # df = pd.read_csv("missing", sep=";")
+    df = pd.read_csv(StringIO(pres.stdout), sep=";")
+    x = df["disfrac"].values.tolist()
+    y = df["similarity"].values.tolist()
+    fig, ax = plt.subplots(figsize=(16, 9))
+    ax.set_title("Effect of disabling keys on lookup consistency")
+    ax.set_xlabel("Disabled fraction")
+    ax.set_ylabel("Lookup similarity to all enabled")
+    ax.plot(x, y)
+    plt.show()
+
+
+# PlotAbsoluteDifferenceUniformity()
+# PlotAbsoluteDifferenceUniformityMax()
+PlotMissing()

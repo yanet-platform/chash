@@ -531,21 +531,36 @@ double diff(const lookup_t& a, const lookup_t& b)
 	}
 
 	std::size_t mismatch{};
-	std::size_t match{};
 	for (std::size_t i = 0; i < a.size(); ++i)
 	{
 		if (a[i] != b[i])
 		{
 			++mismatch;
 		}
-		else
+	}
+
+	return static_cast<double>(mismatch) / a.size();
+}
+
+double same(const lookup_t& a, const lookup_t& b)
+{
+	if (a.size() != b.size())
+	{
+		throw std::invalid_argument{"Mismatched lookups size"};
+	}
+
+	std::size_t match{};
+	for (std::size_t i = 0; i < a.size(); ++i)
+	{
+		if (a[i] == b[i])
 		{
 			++match;
 		}
 	}
 
-	return static_cast<double>(mismatch) / a.size();
+	return static_cast<double>(match) / a.size();
 }
+
 
 std::unordered_map<std::uint32_t, std::uint32_t> dist(const lookup_t& a, const lookup_t& b)
 {
@@ -649,11 +664,11 @@ void Difference(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint3
 	std::iota(disable_order.begin(), disable_order.end(), 1);
 	std::random_shuffle(disable_order.begin(), disable_order.end());
 
-	std::cout << "0.0;" << diff(alook, blook) << '\n';
+	std::cout << "disfrac;similarity\n";
 	for (std::size_t i = 0; i < disable_order.size() - 1; ++i)
 	{
 		updater.UpdateWeight(disable_order.at(i), 0, blook.data());
-		std::cout << double(i + 1) / disable_order.size() << ";" << diff(alook, blook) << '\n';
+		std::cout << double(i + 1) / disable_order.size() << ";" << same(alook, blook) << '\n';
 	}
 }
 
