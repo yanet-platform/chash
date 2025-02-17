@@ -75,7 +75,8 @@ public:
 	{
 		if (cnt == 0 ||
 		    side_rings_count + segments_per_weight * Config::MaxWeight == 0 ||
-		    lookup_size < side_rings_count + segments_per_weight * Config::MaxWeight)
+			side_rings_count < 1 ||
+		    lookup_size < segments_per_weight * Config::MaxWeight)
 		{
 			return std::nullopt;
 		}
