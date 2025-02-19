@@ -75,7 +75,7 @@ public:
 	{
 		if (cnt == 0 ||
 		    side_rings_count + segments_per_weight * Config::MaxWeight == 0 ||
-			side_rings_count < 1 ||
+		    side_rings_count < 1 ||
 		    lookup_size < segments_per_weight * Config::MaxWeight)
 		{
 			return std::nullopt;
@@ -226,7 +226,19 @@ private:
 	{
 		auto& receiver = heads_.at(id);
 		auto enable = receiver.heads[receiver.enabled];
+
+		if (Disabled())
+		{
+			for (Index i = 0; i < lookup_size_; ++i)
+			{
+				lookup[i] = id;
+			}
+			enabled_[enable] = id;
+			++receiver.enabled;
+			return;
+		}
 		enabled_[enable] = id;
+
 		auto headIt = enabled_.find(enable);
 
 		Index stop;
@@ -324,6 +336,11 @@ public:
 		{
 			lookup[pos] = tint;
 		}
+	}
+
+	bool Disabled() const
+	{
+		return enabled_.empty();
 	}
 };
 
