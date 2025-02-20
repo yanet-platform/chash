@@ -628,7 +628,8 @@ auto PrepareUpdater(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::u
 {
 	std::size_t cnt = ipset.size();
 	std::vector<IpV6Address> aset{ipset.begin(), ipset.end()};
-	std::random_shuffle(aset.begin(), aset.end());
+    std::mt19937 gen(42);
+	std::shuffle(aset.begin(), aset.end(), gen);
 	std::vector<std::uint32_t> ids(cnt, 0);
 	std::iota(ids.begin(), ids.end(), 1);
 	std::vector<std::uint32_t> weights(cnt, weight);
@@ -657,7 +658,8 @@ void Difference(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint3
 
 	std::vector<std::uint32_t> disable_order(ipset.size(), 0);
 	std::iota(disable_order.begin(), disable_order.end(), 1);
-	std::random_shuffle(disable_order.begin(), disable_order.end());
+    std::mt19937 gen(42);
+	std::shuffle(disable_order.begin(), disable_order.end(), gen);
 
 	std::cout << "disfrac;similarity\n";
 	for (std::size_t i = 0; i < disable_order.size() - 1; ++i)
