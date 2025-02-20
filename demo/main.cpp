@@ -1,5 +1,5 @@
+#include <arpa/inet.h>
 #include <array>
-#include <charconv>
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -250,110 +250,24 @@ class IpV6Address
 public:
 	static constexpr std::string_view GAP_TOKEN = "::";
 	static constexpr std::string_view::value_type DELIM_TOKEN = ':';
-	static std::optional<IpV6Address> FromString(std::string_view sw)
+	static std::optional<IpV6Address> FromString(const std::string ips)
 	{
 		IpV6Address ip;
-		auto& data = ip.data_;
-
-		auto gap = sw.find(GAP_TOKEN);
-		std::string_view left = sw.substr(0, gap);
-
-		std::size_t i = 0;
-		// Parse left
-		for (; i < data.size(); ++i)
-		{
-			auto [ptr, ec] = std::from_chars(left.data(), left.data() + left.size(), data.at(i), 16);
-
-			if (ec == std::errc::invalid_argument)
-			{
-				return std::nullopt;
-			}
-
-			left.remove_prefix(std::distance(left.data(), ptr));
-			if (!left.empty())
-			{
-				if (left.front() == DELIM_TOKEN)
-				{
-					left.remove_prefix(1);
-				}
-				else
-				{
-					return std::nullopt;
-				}
-			}
-			else
-			{
-				++i;
-				break;
-			}
-		}
-
-		if (gap == std::string::npos)
-		{
-			if (i == data.size())
-			{
-				return ip;
-			}
-			else
-			{
-				return std::nullopt;
-			}
-		}
-
-		std::string_view right = sw.substr(gap + 2);
-
-		// Gap
-		auto rlen = std::count(right.begin(), right.end(), DELIM_TOKEN);
-		if (i + rlen > data.size())
+		if(inet_pton(AF_INET6, ips.c_str(), ip.data_.data()) != 1)
 		{
 			return std::nullopt;
 		}
-		for (auto gend = data.size() - rlen; i < gend; ++i)
-		{
-			data.at(i) = 0;
-		}
-
-		// Parse right
-		for (; i < data.size(); ++i)
-		{
-			auto [ptr, ec] = std::from_chars(right.data(), right.data() + right.size(), data.at(i), 16);
-
-			if (ec == std::errc::invalid_argument)
-			{
-				return std::nullopt;
-			}
-
-			right.remove_prefix(std::distance(right.data(), ptr));
-			if (!right.empty())
-			{
-				if (right.front() == DELIM_TOKEN)
-				{
-					right.remove_prefix(1);
-				}
-				else
-				{
-					return std::nullopt;
-				}
-			}
-			else
-			{
-				break;
-			}
-		}
-
 		return ip;
 	}
 
 	std::string ToString() const
 	{
-		std::ostringstream ss;
-		ss << std::hex;
-		ss << data_[0];
-		for (std::uint16_t i = 1; i < data_.size(); ++i)
+		char buf[INET_ADDRSTRLEN];
+		if (!inet_ntop(AF_INET6, data_.data(), buf, INET6_ADDRSTRLEN))
 		{
-			ss << ':' << data_[i];
+			throw std::logic_error{"ntop conversion failed"};
 		}
-		return ss.str();
+		return buf;
 	}
 
 	std::array<std::uint16_t, 8>& Data()
@@ -556,7 +470,6 @@ double same(const lookup_t& a, const lookup_t& b)
 	return static_cast<double>(match) / a.size();
 }
 
-
 std::unordered_map<std::uint32_t, std::uint32_t> dist(const lookup_t& a, const lookup_t& b)
 {
 	if (a.size() != b.size())
@@ -628,7 +541,7 @@ auto PrepareUpdater(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::u
 {
 	std::size_t cnt = ipset.size();
 	std::vector<IpV6Address> aset{ipset.begin(), ipset.end()};
-    std::mt19937 gen(42);
+	std::mt19937 gen(42);
 	std::shuffle(aset.begin(), aset.end(), gen);
 	std::vector<std::uint32_t> ids(cnt, 0);
 	std::iota(ids.begin(), ids.end(), 1);
@@ -658,7 +571,7 @@ void Difference(std::set<IpV6Address>& ipset, std::uint32_t mappings, std::uint3
 
 	std::vector<std::uint32_t> disable_order(ipset.size(), 0);
 	std::iota(disable_order.begin(), disable_order.end(), 1);
-    std::mt19937 gen(42);
+	std::mt19937 gen(42);
 	std::shuffle(disable_order.begin(), disable_order.end(), gen);
 
 	std::cout << "disfrac;similarity\n";
@@ -915,7 +828,7 @@ int main(int argc, char* argv[])
 			DifferenceUniformityAbsolute(ipset.value(), mappings, cells);
 			break;
 		case Command::YIELD_UNIFORMITY_ABS_MAX:
-			DifferenceUniformityAbsoluteMax(ipset.value(),mappings, cells);
+			DifferenceUniformityAbsoluteMax(ipset.value(), mappings, cells);
 			break;
 		default:
 		{
