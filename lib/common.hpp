@@ -1,7 +1,9 @@
 #pragma once
 #include <cstdint>
 
-#define GCC_BUG_UNUSED(arg) (void)(arg);
+#ifndef GCC_BUG_UNUSED
+	#define GCC_BUG_UNUSED(arg) (void)(arg);
+#endif
 
 namespace chash
 {
