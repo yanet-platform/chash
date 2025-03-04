@@ -28,6 +28,7 @@ struct BasicRealInfo
 {
 	std::vector<typename Config::Index> heads;
 	typename Config::Index enabled = 0;
+	typename Config::Index weight = 0;
 };
 
 template<typename Config = DefaultConfig>
@@ -44,7 +45,8 @@ private:
 	std::unordered_map<RealId, RealInfo> heads_;
 	std::vector<bool> enabled_;
 	Index lookup_size_;
-	Index active_ = 0;
+	Index reals_active_ = 0;
+	Index total_weight_ = 0;
 	BasicWeightUpdater(Index segments_per_weight, std::size_t lookup_size) :
 	        segments_per_weight_{segments_per_weight},
 	        enabled_(lookup_size, false),
@@ -85,9 +87,11 @@ public:
 		{
 			RealInfo& info = updater.heads_[ids[i]];
 			info.enabled = weights[i] * segments_per_weight;
+			info.weight = weights[i];
+			updater.total_weight_ += weights[i];
 			if (info.enabled != 0)
 			{
-				++updater.active_;
+				++updater.reals_active_;
 			}
 		}
 
@@ -202,17 +206,20 @@ private:
 		}
 	}
 
-	void ColorSlice(RealId id, Index start, RealId* lookup)
+	Index ColorSlice(RealId id, Index start, RealId* lookup)
 	{
 		RealId tint = lookup[start];
 		if (tint == id)
 		{
-			return;
+			return 0;
 		}
+		Index changed{};
 		for (std::size_t i{start}; lookup[i] == tint && !enabled_[i]; i = NextRingPosition(LookupSize(), i))
 		{
 			lookup[i] = id;
+			++changed;
 		}
+		return changed;
 	}
 
 	/* @brief Marks the last enabled cell in the chain of head cells for \id as
@@ -222,7 +229,7 @@ private:
 	 * fact that such occurances are comparatively rare and the lower the
 	 * target weight the rarer they become.
 	 */
-	void DisableSlice(RealId id, RealId* lookup)
+	Index DisableSlice(RealId id, RealId* lookup)
 	{
 		auto& donor = heads_.at(id);
 		--donor.enabled;
@@ -231,19 +238,20 @@ private:
 		RealId shadow = lookup[PrevRingPosition(lookup_size_, disable)];
 
 		enabled_[disable] = false;
-		ColorSlice(shadow, disable, lookup);
+		Index changed = ColorSlice(shadow, disable, lookup);
+		return changed;
 	}
 
 	/* @brief Marks the cell in chain of head cells for \id directly past the
 	 * last enabled as enabled and adds new slice starting at corresponding
 	 * position.
 	 */
-	void EnableSlice(RealId id, RealId* lookup)
+	Index EnableSlice(RealId id, RealId* lookup)
 	{
 		auto& receiver = heads_.at(id);
 		if (receiver.enabled == receiver.heads.size())
 		{
-			return;
+			return 0;
 		}
 
 		if (Disabled())
@@ -251,20 +259,21 @@ private:
 			std::fill(lookup, lookup + lookup_size_, id);
 			enabled_[receiver.heads[0]] = true;
 			++receiver.enabled;
-			return;
+			return lookup_size_;
 		}
 
-		if ((active_ == 1) && (*lookup == id))
+		if ((reals_active_ == 1) && (*lookup == id))
 		{
 			++receiver.enabled;
-			return;
+			return 0;
 		}
 
 		Index start = receiver.heads[receiver.enabled];
-		ColorSlice(id, start, lookup);
+		Index changed = ColorSlice(id, start, lookup);
 		enabled_[start] = true;
 
 		++receiver.enabled;
+		return changed;
 	}
 
 public:
@@ -293,14 +302,88 @@ public:
 
 		if (was == 0 && weight != 0)
 		{
-			++active_;
+			++reals_active_;
 		}
+
 		if (weight == 0 && was != 0)
 		{
-			--active_;
-			if (active_ == 0)
+			--reals_active_;
+			if (reals_active_ == 0)
 			{
 				std::fill(lookup, lookup + lookup_size_, Invalid());
+			}
+		}
+
+		total_weight_ -= info.weight;
+		total_weight_ += weight;
+		info.weight = weight;
+	}
+
+	Index ConfiguredCells(Weight weight) const
+	{
+		return static_cast<std::uint64_t>(lookup_size_) * weight / total_weight_;
+	}
+
+	double Deviation(Weight weight, Index effective_cells) const
+	{
+		return (static_cast<double>(effective_cells) - ConfiguredCells(weight)) / ConfiguredCells(weight);
+	}
+
+	void AdjustDown(RealId id, RealInfo& info, RealId* lookup, Index effective_cells)
+	{
+		Index target = ConfiguredCells(info.weight);
+		while ((info.enabled > 1) && (effective_cells > target))
+		{
+			effective_cells -= DisableSlice(id, lookup);
+		}
+	}
+
+	void AdjustUp(RealId id, RealInfo& info, RealId* lookup, Index effective_cells)
+	{
+		Index target = ConfiguredCells(info.weight);
+		while ((info.enabled < info.heads.size()) && (effective_cells < target))
+		{
+			effective_cells += EnableSlice(id, lookup);
+		}
+		if ((effective_cells > target) && (info.enabled > 0))
+		{
+			DisableSlice(id, lookup);
+		}
+	}
+
+	/*
+	 * @brief as last step, after consistently building ring data one might
+	 * consider sacrifice some consistency in sake of reducing the effective
+	 * weight error.
+	 */
+	void Adjust(RealId* lookup)
+	{
+		if (Disabled())
+		{
+			return;
+		}
+
+		std::unordered_map<RealId, Index> distribution;
+		std::for_each(lookup,
+		              lookup + lookup_size_,
+		              [&](RealId id) {
+			              ++distribution[id];
+		              });
+
+		for (auto& [id, info] : heads_)
+		{
+			if (info.weight == 0)
+			{
+				continue;
+			}
+
+			if (auto deviation = Deviation(info.weight, distribution.at(id)); deviation > Config::DEFAULT_DEVIATION_TOLERANCE)
+			{
+				AdjustDown(id, info, lookup, distribution.at(id));
+			}
+			else if (deviation < -Config::DEFAULT_DEVIATION_TOLERANCE)
+			{
+				AdjustUp(id, info, lookup, distribution.at(id));
 			}
 		}
 	}
@@ -313,11 +396,11 @@ public:
 			{
 				if (h->second.enabled == 0 && weights[i] != 0)
 				{
-					++active_;
+					++reals_active_;
 				}
 				if (weights[i] == 0 && h->second.enabled != 0)
 				{
-					--active_;
+					--reals_active_;
 				}
 				Index& current = h->second.enabled;
 				Index updated = weights[i] * segments_per_weight_;
@@ -338,6 +421,9 @@ public:
 					              });
 				}
 				current = updated;
+				total_weight_ += weights[i];
+				total_weight_ -= h->second.weight;
+				h->second.weight = weights[i];
 			}
 		}
 	}
