@@ -4,3 +4,4 @@ project('chash', 'cpp', default_options: [
 											])
 
 subdir('lib')
+subdir('demo')
