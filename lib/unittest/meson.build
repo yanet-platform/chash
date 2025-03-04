@@ -24,6 +24,14 @@ balancer = executable(
 
 test('balancer', balancer, protocol: 'gtest')
 
+adjust = executable(
+        'adjust-unittest',
+        'test-adjust.cpp',
+        dependencies: dependencies
+)
+
+test('adjust', adjust, protocol: 'gtest')
+
 equal_weights = executable(
         'equal-weights-unittest',
         'test-equal-weights.cpp',
