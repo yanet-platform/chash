@@ -1,8 +1,13 @@
+gtest_proj = subproject('gtest')
+gtest_dep = gtest_proj.get_variable('gtest_dep')
+gtest_main_dep = gtest_proj.get_variable('gtest_main_dep')
+
 dependencies = [
-	dependency('gtest'),
-	dependency('gtest_main'),
+	gtest_dep,
+	gtest_main_dep,
 	chash_dep
 ]
+
 
 sources = files(
 	'test-balancer.cpp'
