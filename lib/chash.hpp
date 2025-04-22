@@ -12,6 +12,9 @@
 #include "unweighted.hpp"
 #include "utils.hpp"
 
+#include <iostream>
+#include <sstream>
+
 namespace chash
 {
 
@@ -94,28 +97,10 @@ public:
 		std::vector<Unweighted<RealId>> unweighted;
 
 		std::mt19937 seq(Config::RNG_SEED);
-		std::set<RealId> unseen{ids, ids + cnt};
-		std::set<RealId> remain;
 		for (std::size_t i = 0; i < side_rings_count; ++i)
 		{
 			auto salt = seq();
-			auto [ring, contain] = Unweighted<RealId>::Make(reals, ids, cnt, salt, Config::DEFAULT_UNWEIGHTED_SIZE);
-			unweighted.emplace_back(std::move(ring));
-			remain.clear();
-			for (auto id : unseen)
-			{
-				if (contain.find(id) == contain.end())
-				{
-					remain.insert(id);
-				}
-			}
-			unseen = std::move(remain);
-		}
-
-		if (!unseen.empty())
-		{
-			// unweighted rings don't contain some reals due to collisions
-			return std::nullopt;
+			unweighted.emplace_back(Unweighted<RealId>::Make(reals, ids, cnt, salt));
 		}
 
 		std::uint8_t lookup_bits = PowerOfTwoLowerBound(lookup_size);
@@ -342,12 +327,29 @@ public:
 		}
 	}
 
+	std::string Report(RealId* lookup)
+	{
+		std::unordered_map<RealId, Index> dist;
+		std::for_each(lookup, lookup + lookup_size_, [&](RealId id) {
+			++dist[id];
+		});
+		std::stringstream ss;
+		for (auto& [id, count] : dist)
+		{
+			ss << "id: " << id << "count: " << count << "\n";
+		}
+		return ss.str();
+	}
+
 	void UpdateLookup(const RealId* ids, const Weight* weights, Index count, RealId* lookup)
 	{
 		for (Index i = 0; i < count; ++i)
 		{
 			UpdateWeight(ids[i], weights[i], lookup);
 		}
+		std::stringstream ss;
+		ss << "PDR updating: " << Report(lookup);
+		std::cout << ss.str();
 	}
 
 	static bool Valid(RealId id)

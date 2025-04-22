@@ -14,86 +14,55 @@ namespace chash
 template<typename RealId>
 class Unweighted
 {
-	std::vector<RealId> lookup_;
-
-	template<typename Real>
-	static std::map<IdHash, RealId> Temporary(
-	        const Real* reals,
-	        const RealId* ids,
-	        std::size_t cnt,
-	        Salt salt,
-			std::size_t size)
+	struct Region
 	{
-		std::map<IdHash, RealId> to_id;
-		std::map<IdHash, std::size_t> seen;
-		for (std::size_t i = 0; i < cnt; ++i)
-		{
-			const Real& real = reals[i];
-			const RealId& id = ids[i];
-			auto hid = CalcHash(real, salt) % size;
-			// Real comparing greater wins collision
-			if (auto it = to_id.find(hid); it != to_id.end())
-			{
-				auto& real_old = reals[seen.at(hid)];
-				if (real_old < real)
-				{
-					to_id[hid] = id;
-					seen[hid] = i;
-				}
-			}
-			else
-			{
-				to_id[hid] = id;
-				seen[hid] = i;
-			}
-		}
-		return to_id;
-	}
+		RealId id;
+		IdHash end;
+	};
 
-	std::unordered_set<RealId> InitLookup(const std::map<IdHash, RealId>& guide, std::size_t size)
-	{
-		RealId tint = std::prev(guide.end())->second;
-		std::unordered_set<RealId> result;
-		result.insert(tint);
-		auto next = guide.begin();
-		for (std::size_t i = 0; i < size; ++i)
-		{
-			if ((next != guide.end()) && (next->first == i))
-			{
-				tint = next->second;
-				result.insert(tint);
-				++next;
-			}
-			lookup_.push_back(tint);
-		}
-		return result;
-	}
+	std::vector<Region> regions_;
 
 	Unweighted(std::size_t size)
 	{
-		lookup_.reserve(size);
+		regions_.reserve(size + 1);
 	}
 
 public:
 	template<typename Real>
-	static std::pair<Unweighted, std::unordered_set<RealId>> Make(
+	static Unweighted Make(
 	        const Real* reals,
 	        const RealId* ids,
 	        std::size_t cnt,
-	        Salt salt,
-	        std::size_t size)
+	        Salt salt)
 	{
-		std::map<IdHash, RealId> mapping = Temporary(reals, ids, cnt, salt, size);
-		Unweighted ring(size);
+		Unweighted ring(cnt);
+		for (std::size_t i = 0; i < cnt; ++i)
+		{
+			const Real& real = reals[i];
+			const RealId& id = ids[i];
+			auto hash = CalcHash(real, salt);
+			ring.regions_.push_back({id, hash});
+		}
 
-		return std::pair<Unweighted, std::unordered_set<RealId>>{ ring, ring.InitLookup(mapping, size) };
+		std::sort(ring.regions_.begin(), ring.regions_.end(), [](const Region& a, const Region& b){
+			return a.end < b.end;
+		});
+
+		if (ring.regions_.back().end != std::numeric_limits<IdHash>::max())
+		{
+			ring.regions_.push_back({ring.regions_.front().id, std::numeric_limits<IdHash>::max()});
+		}
+
+		return ring;
 	}
 
 	RealId Match(IdHash hash)
 	{
-		return lookup_[hash % lookup_.size()];
+		return std::lower_bound(regions_.cbegin(), regions_.cend(), hash, [](const Region& a, IdHash b) {
+			       return a.end < b;
+		       })
+		        ->id;
 	}
-
 };
 
 } // namespace chash
