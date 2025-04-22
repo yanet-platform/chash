@@ -109,6 +109,7 @@ static constexpr std::string_view CMD_REPORT_OVERLAP = "overlap";
 static constexpr std::string_view CMD_REPORT_TIME = "time";
 static constexpr std::string_view CMD_REPORT_YIELD_UNIFORMITY_ABS = "yielduniabs";
 static constexpr std::string_view CMD_REPORT_YIELD_UNIFORMITY_ABS_MAX = "maxyielduniabs";
+static constexpr std::string_view CMD_REPORT_K1001_MAX = "k1001";
 
 static constexpr std::size_t DEFAULT_CELLS_PER_WEIGHT = 20;
 static constexpr std::size_t DEFAULT_MAPPINGS = 20000;
@@ -138,7 +139,8 @@ enum class Command
 	OVERLAP,
 	TIME,
 	YIELD_UNIFORMITY_ABS,
-	YIELD_UNIFORMITY_ABS_MAX
+	YIELD_UNIFORMITY_ABS_MAX,
+	K1001
 };
 
 MainArg ParseArg(const char* str)
@@ -213,6 +215,10 @@ std::optional<Command> ParseCmd(const char* str)
 	if (str == CMD_REPORT_YIELD_UNIFORMITY_ABS_MAX)
 	{
 		return Command::YIELD_UNIFORMITY_ABS_MAX;
+	}
+	if (str == CMD_REPORT_K1001_MAX)
+	{
+		return Command::K1001;
 	}
 
 	return std::nullopt;
@@ -435,7 +441,7 @@ std::optional<std::set<IpV6Address>> ReadIPSet()
 	std::set<IpV6Address> ipset;
 	if (!config.is_open())
 	{
-		std::exit(EXIT_FAILURE);
+		return std::nullopt;
 	}
 	return ParseIpV6Set(config);
 }
@@ -717,6 +723,54 @@ void EffectiveWeightsByWeight(std::set<IpV6Address>& ipset, std::uint32_t mappin
 	updater.InitLookup(alook.data());
 }
 
+void K1001Weight()
+{
+	std::vector<std::string> aset{"alpha", "beta", "gamma", "delta", "epsilon", "phi"};
+	const std::size_t cnt = aset.size();
+	std::vector<std::uint32_t> ids(cnt, 0);
+	std::iota(ids.begin(), ids.end(), 1);
+	std::vector<std::uint32_t> weights(cnt, 1);
+	weights.back() = 100;
+	auto weight_units_count = std::accumulate(weights.begin(), weights.end(), 0);
+	std::cout << weight_units_count << "\n";
+	for (std::size_t cells = 1; cells < 200; ++cells)
+	{
+		const std::uint32_t min_ring_size = 1000;
+		const auto sz = std::max(chash::WeightUpdater::LookupRequiredSize(cnt, cells), min_ring_size);
+		std::vector<std::uint32_t> alook(sz, 0);
+		double deviate{0.0};
+		double deviate_sum{0.0};
+		for (std::size_t i = 0; i < cnt; ++i)
+		{
+			std::rotate(aset.begin(), std::next(aset.begin()), aset.end());
+			auto oapdater = chash::MakeWeightUpdater(
+			        aset.data(), ids.data(), weights.data(), aset.size(), 8000, cells, sz);
+			if (!oapdater)
+			{
+				throw std::runtime_error{"Failed to create updater"};
+			}
+
+			std::fill(alook.begin(), alook.end(), std::numeric_limits<std::uint32_t>::max());
+
+			oapdater->InitLookup(alook.data());
+			auto rep = CellCount(alook);
+
+			double weight_unit = static_cast<double>(alook.size()) / weight_units_count;
+
+			for (std::size_t id = 1; id <= cnt; ++id)
+			{
+				auto current_deviate = std::abs(rep[id] / (weight_unit * weights[id - 1]) - 1.0);
+				//std::cout << "PDR: " << id << ": " << rep[id] << ' ' << weights[id - 1] << ' ' << current_deviate << "\n";
+				deviate = std::max(deviate, current_deviate);
+				deviate_sum += current_deviate;
+			}
+			//std::cout << "\n";
+		}
+
+		std::cout << cells << ";" << deviate << ";" << deviate_sum / cnt << "\n";
+	}
+}
+
 int main(int argc, char* argv[])
 {
 	ConfigSource config_source{ConfigSource::IMAGINATION};
@@ -856,6 +910,9 @@ int main(int argc, char* argv[])
 			break;
 		case Command::YIELD_UNIFORMITY_ABS_MAX:
 			DifferenceUniformityAbsoluteMax(ipset.value(), mappings, cells);
+			break;
+		case Command::K1001:
+			K1001Weight();
 			break;
 		default:
 		{
