@@ -738,8 +738,32 @@ void K1001Weight()
 		const std::uint32_t min_ring_size = 1000;
 		const auto sz = std::max(chash::WeightUpdater::LookupRequiredSize(cnt, cells), min_ring_size);
 		std::vector<std::uint32_t> alook(sz, 0);
-		double deviate{0.0};
-		double deviate_sum{0.0};
+		std::vector<std::uint32_t> blook(sz, 0);
+
+		auto walk = [&]() {
+			double deviate{0.0};
+			double deviate_sum{0.0};
+			auto rep = CellCount(alook);
+
+			double weight_unit = static_cast<double>(alook.size()) / weight_units_count;
+
+			for (std::size_t id = 1; id <= cnt; ++id)
+			{
+				auto current_deviate = std::abs(rep[id] / (weight_unit * weights[id - 1]) - 1.0);
+				// std::cout << "PDR: " << id << ": " << rep[id] << ' ' << weights[id - 1] << ' ' << current_deviate << "\n";
+				deviate = std::max(deviate, current_deviate);
+				deviate_sum += current_deviate;
+			}
+			return std::pair(deviate, deviate_sum);
+		};
+
+		double unadjusted_dev{};
+		double adjusted_dev{};
+		double unadjusted_sum{};
+		double adjusted_sum{};
+
+		std::uint32_t diff{};
+
 		for (std::size_t i = 0; i < cnt; ++i)
 		{
 			std::rotate(aset.begin(), std::next(aset.begin()), aset.end());
@@ -753,21 +777,32 @@ void K1001Weight()
 			std::fill(alook.begin(), alook.end(), std::numeric_limits<std::uint32_t>::max());
 
 			oapdater->InitLookup(alook.data());
-			auto rep = CellCount(alook);
+			std::copy(alook.cbegin(), alook.cend(), blook.begin());
 
-			double weight_unit = static_cast<double>(alook.size()) / weight_units_count;
-
-			for (std::size_t id = 1; id <= cnt; ++id)
 			{
-				auto current_deviate = std::abs(rep[id] / (weight_unit * weights[id - 1]) - 1.0);
-				//std::cout << "PDR: " << id << ": " << rep[id] << ' ' << weights[id - 1] << ' ' << current_deviate << "\n";
-				deviate = std::max(deviate, current_deviate);
-				deviate_sum += current_deviate;
+				auto [curr_dev, curr_sum] = walk();
+				unadjusted_dev = std::max(unadjusted_dev, curr_dev);
+				unadjusted_sum = std::max(unadjusted_sum, curr_sum);
 			}
-			//std::cout << "\n";
+
+			oapdater->Adjust(alook.data());
+			{
+				auto [curr_dev, curr_sum] = walk();
+				adjusted_dev = std::max(adjusted_dev, curr_dev);
+				adjusted_sum = std::max(adjusted_sum, curr_sum);
+			}
+			// std::cout << "\n";
+
+			for (std::uint32_t i = 0; i < alook.size(); ++i)
+			{
+				if (alook[i] != blook[i])
+				{
+					++diff;
+				}
+			}
 		}
 
-		std::cout << cells << ";" << deviate << ";" << deviate_sum / cnt << "\n";
+		std::cout << cells << ";" << unadjusted_dev << ";" << unadjusted_sum / cnt << ";" << adjusted_dev << ";" << adjusted_sum / cnt << ";" << diff / double(alook.size()) << "\n";
 	}
 }
 
