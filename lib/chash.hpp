@@ -32,6 +32,36 @@ struct BasicRealInfo
 	std::vector<typename Config::Index> heads;
 	typename Config::Index enabled = 0;
 	typename Config::Index weight = 0;
+
+	std::optional<typename Config::Index> EnableOne()
+	{
+		if (enabled == heads.size())
+		{
+			return std::nullopt;
+		}
+		return heads[enabled++];
+	}
+
+	std::optional<typename Config::Index> DisableOne()
+	{
+		if (enabled == 0)
+		{
+			return std::nullopt;
+		}
+		return heads[--enabled];
+	}
+
+	auto cbegin()
+	{
+		return heads.cbegin();
+	}
+
+	auto cend()
+	{
+		return heads.cbegin() + enabled;
+	}
+
+	bool Disabled() { return enabled == 0; }
 };
 
 template<typename Config = DefaultConfig>
@@ -47,7 +77,7 @@ private:
 	Index segments_per_weight_;
 	std::unordered_map<RealId, RealInfo> heads_;
 	std::vector<bool> enabled_;
-	Index lookup_size_;
+	const Index lookup_size_;
 	Index reals_active_ = 0;
 	Index total_weight_ = 0;
 	BasicWeightUpdater(Index segments_per_weight, std::size_t lookup_size) :
@@ -92,7 +122,7 @@ public:
 			info.enabled = weights[i] * segments_per_weight;
 			info.weight = weights[i];
 			updater.total_weight_ += weights[i];
-			if (info.enabled != 0)
+			if (!info.Disabled())
 			{
 				++updater.reals_active_;
 			}
@@ -121,7 +151,6 @@ public:
 			RealId rid = unweighted[u].Match(seq());
 			updater.heads_[rid].heads.push_back(pos);
 			u = NextRingPosition(unweighted.size(), u);
-			updater.enabled_[pos] = true;
 			++distributed;
 
 			if (distributed % (segments_per_weight * cnt) == 0)
@@ -133,10 +162,10 @@ public:
 		for (auto& [id, info] : updater.heads_)
 		{
 			GCC_BUG_UNUSED(id);
-			std::for_each(info.heads.begin() + info.enabled,
-			              info.heads.end(),
+			std::for_each(info.cbegin(),
+			              info.cend(),
 			              [&](const Index pos) {
-				              updater.enabled_[pos] = false;
+				              updater.enabled_[pos] = true;
 			              });
 		}
 		return updater;
@@ -193,13 +222,13 @@ private:
 
 	Index ColorSlice(RealId id, Index start, RealId* lookup)
 	{
-		RealId tint = lookup[start];
-		if (tint == id)
+		RealId old = lookup[start];
+		if (old == id)
 		{
 			return 0;
 		}
 		Index changed{};
-		for (std::size_t i{start}; lookup[i] == tint && !enabled_[i]; i = NextRingPosition(LookupSize(), i))
+		for (Index i{start}; !enabled_[i]; i = NextRingPosition(LookupSize(), i))
 		{
 			lookup[i] = id;
 			++changed;
@@ -217,47 +246,68 @@ private:
 	Index DisableSlice(RealId id, RealId* lookup)
 	{
 		auto& donor = heads_.at(id);
-		--donor.enabled;
 
-		Index disable = donor.heads.at(donor.enabled);
-		RealId shadow = lookup[PrevRingPosition(lookup_size_, disable)];
+		const auto maystart = donor.DisableOne();
+		if (!maystart)
+		{
+			return 0;
+		}
+		const auto& start = maystart.value();
 
-		enabled_[disable] = false;
-		Index changed = ColorSlice(shadow, disable, lookup);
+		if (donor.Disabled())
+		{
+			--reals_active_;
+		}
+
+		enabled_[start] = false;
+
+		if (Disabled())
+		{
+			std::fill(lookup, lookup + lookup_size_, Invalid());
+			return LookupSize();
+		}
+
+		Index prev = PrevRingPosition(lookup_size_, start);
+		RealId shadow = lookup[prev];
+
+		Index changed = ColorSlice(shadow, start, lookup);
 		return changed;
 	}
 
-	/* @brief Marks the cell in chain of head cells for \id directly past the
-	 * last enabled as enabled and adds new slice starting at corresponding
+	/* @brief Adds new slice starting at corresponding
 	 * position.
 	 */
 	Index EnableSlice(RealId id, RealId* lookup)
 	{
 		auto& receiver = heads_.at(id);
-		if (receiver.enabled == receiver.heads.size())
+
+		if (receiver.Disabled())
+		{
+			++reals_active_;
+		}
+
+		const auto maystart = receiver.EnableOne();
+		if (!maystart)
 		{
 			return 0;
 		}
+		const auto& start = maystart.value();
 
-		if (Disabled())
+		if (reals_active_ == 1)
 		{
-			std::fill(lookup, lookup + lookup_size_, id);
-			enabled_[receiver.heads[0]] = true;
-			++receiver.enabled;
-			return lookup_size_;
-		}
-
-		if ((reals_active_ == 1) && (*lookup == id))
-		{
-			++receiver.enabled;
+			enabled_[start] = true;
+			if (*lookup != id)
+			{
+				std::fill(lookup, lookup + LookupSize(), id);
+				return LookupSize();
+			}
 			return 0;
 		}
 
-		Index start = receiver.heads[receiver.enabled];
+		RealId old = lookup[start];
 		Index changed = ColorSlice(id, start, lookup);
 		enabled_[start] = true;
 
-		++receiver.enabled;
 		return changed;
 	}
 
@@ -273,8 +323,6 @@ public:
 		}
 		auto& info = heads_.at(id);
 
-		Index was = info.enabled;
-
 		while (info.enabled > weight * segments_per_weight_)
 		{
 			DisableSlice(id, lookup);
@@ -283,20 +331,6 @@ public:
 		while (info.enabled < weight * segments_per_weight_)
 		{
 			EnableSlice(id, lookup);
-		}
-
-		if (was == 0 && weight != 0)
-		{
-			++reals_active_;
-		}
-
-		if (weight == 0 && was != 0)
-		{
-			--reals_active_;
-			if (reals_active_ == 0)
-			{
-				std::fill(lookup, lookup + lookup_size_, Invalid());
-			}
 		}
 
 		total_weight_ -= info.weight;
@@ -355,8 +389,32 @@ public:
 			              ++distribution[id];
 		              });
 
+		std::vector<RealId> order;
+		order.reserve(heads_.size());
 		for (auto& [id, info] : heads_)
 		{
+			GCC_BUG_UNUSED(info);
+			if (info.weight != 0)
+			{
+				order.push_back(id);
+			}
+		}
+		std::sort(order.begin(), order.end(), [&](RealId a, RealId b) {
+			if (heads_[a].weight > heads_[b].weight)
+			{
+				return true;
+			}
+			if (heads_[a].weight < heads_[b].weight)
+			{
+				return false;
+			}
+			return Deviation(heads_[a].weight, distribution[a]) > Deviation(heads_[b].weight, distribution[b]);
+		});
+
+		for (auto id : order)
+		{
+			auto& info = heads_[id];
+
 			if (info.weight == 0)
 			{
 				continue;
@@ -399,8 +457,8 @@ public:
 				}
 				else
 				{
-					std::for_each(h->second.heads.begin() + current,
-					              h->second.heads.begin() + updated,
+					std::for_each(h->second.heads.begin() + updated,
+					              h->second.heads.begin() + current,
 					              [&](Index pos) {
 						              enabled_[pos] = false;
 					              });
@@ -433,9 +491,6 @@ public:
 		{
 			UpdateWeight(ids[i], weights[i], lookup);
 		}
-		std::stringstream ss;
-		ss << "PDR updating: " << Report(lookup);
-		std::cout << ss.str();
 	}
 
 	static bool Valid(RealId id)
@@ -448,6 +503,11 @@ public:
 		return std::numeric_limits<RealId>::max();
 	}
 
+	/*
+	 * @brief Fill segment heads. Find last head and use it's color ass starting.
+	 * Color the lookup start to finish, changing the color when encountering
+	 * alredy colored cell (segment head).
+	 */
 	void InitLookup(RealId* lookup)
 	{
 		std::fill(lookup, lookup + lookup_size_, Invalid());
@@ -459,8 +519,8 @@ public:
 
 		for (auto& [id, info] : heads_)
 		{
-			std::for_each(info.heads.begin(),
-			              info.heads.begin() + info.enabled,
+			std::for_each(info.cbegin(),
+			              info.cend(),
 			              [&](const Index& pos) {
 				              lookup[pos] = id;
 			              });
@@ -487,11 +547,7 @@ public:
 
 	bool Disabled() const
 	{
-		return std::find_if(heads_.begin(),
-		                    heads_.end(),
-		                    [](const auto& e) {
-			                    return e.second.enabled > 0;
-		                    }) == heads_.end();
+		return reals_active_ == 0;
 	}
 };
 
