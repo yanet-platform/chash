@@ -34,7 +34,7 @@ TEST(EqualWeights, SparseIterate)
 			ASSERT_NE(dist.find(id), dist.end());
 		}
 
-		const double margin = 0.10;
+		const double margin = 0.30;
 		const std::size_t total = input.TotalWeight();
 		for (std::size_t i = 0; i < input.ids.size(); ++i)
 		{

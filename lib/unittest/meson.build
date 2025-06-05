@@ -21,9 +21,28 @@ bit_reverse = executable(
 
 test('bit-reverse', bit_reverse, protocol: 'gtest')
 
+unweighted = executable(
+	'unweighted-unittest',
+	'test-unweighted.cpp',
+	cpp_args: ['-g', '-O0'],
+	dependencies: dependencies
+)
+
+test('unweighted', unweighted, protocol: 'gtest')
+
+basic_test = executable(
+  'basic-unittest',
+  'test-basic.cpp',
+  dependencies: dependencies,
+  cpp_args: ['-g', '-O0']
+)
+
+test('basic', basic_test, protocol: 'gtest')
+
 balancer = executable(
 	'balancer-unittest',
 	sources,
+	cpp_args: ['-g', '-O0'],
 	dependencies: dependencies
 )
 
@@ -44,3 +63,11 @@ equal_weights = executable(
 )
 
 test('equal-weights', equal_weights, protocol: 'gtest')
+
+speed = executable(
+	'speed-unittest',
+	'test-speed.cpp',
+	dependencies: dependencies
+)
+
+test('speed', speed, protocol: 'gtest')

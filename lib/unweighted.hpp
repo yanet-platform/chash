@@ -20,37 +20,56 @@ class Unweighted
 		IdHash end;
 	};
 
-	std::vector<Region> regions_;
+	std::vector<RealId> lookup_;
 
-	Unweighted(std::size_t size)
+	Unweighted(IdHash size)
 	{
-		regions_.reserve(size + 1);
+		lookup_.reserve(size);
 	}
 
 public:
 	template<typename Real>
 	static Unweighted Make(
+	        IdHash size,
 	        const Real* reals,
 	        const RealId* ids,
 	        std::size_t cnt,
 	        Salt salt)
 	{
-		Unweighted ring(cnt);
+		std::vector<Region> regions;
+		regions.reserve(cnt);
+		Unweighted ring(size);
 		for (std::size_t i = 0; i < cnt; ++i)
 		{
 			const Real& real = reals[i];
 			const RealId& id = ids[i];
 			auto hash = CalcHash(real, salt);
-			ring.regions_.push_back({id, hash});
+			regions.push_back({id, hash % size});
 		}
 
-		std::sort(ring.regions_.begin(), ring.regions_.end(), [](const Region& a, const Region& b){
-			return a.end < b.end;
+		std::sort(regions.begin(), regions.end(), [](const Region& a, const Region& b) {
+			if (a.end != b.end)
+			{
+				return a.end < b.end;
+			}
+			return a.id < b.id;
 		});
 
-		if (ring.regions_.back().end != std::numeric_limits<IdHash>::max())
+		regions.erase(std::unique(regions.begin(), regions.end(), [](const Region& a, const Region& b) {
+			              return a.end == b.end;
+		              }),
+		              regions.end());
+
+		for (auto region : regions)
 		{
-			ring.regions_.push_back({ring.regions_.front().id, std::numeric_limits<IdHash>::max()});
+			while (ring.lookup_.size() < region.end)
+			{
+				ring.lookup_.push_back(region.id);
+			}
+		}
+		while (ring.lookup_.size() < size)
+		{
+			ring.lookup_.push_back(ring.lookup_[0]);
 		}
 
 		return ring;
@@ -58,10 +77,7 @@ public:
 
 	RealId Match(IdHash hash)
 	{
-		return std::lower_bound(regions_.cbegin(), regions_.cend(), hash, [](const Region& a, IdHash b) {
-			       return a.end < b;
-		       })
-		        ->id;
+		return lookup_[hash % lookup_.size()];
 	}
 };
 

@@ -1167,7 +1167,7 @@ int main(int argc, char* argv[])
 			          << "-----------------------------------------------------------\n";
 			Print(ids_weights);
 			std::cout << "\n";
-			updater.UpdateLookup(ids.data(), weights.data(), ids.size(), lookup.data());
+			updater.UpdateLookupOneByOne(ids.data(), weights.data(), ids.size(), lookup.data());
 			std::cout << "weights: ";
 			report::Weights(lookup);
 			std::cout << "clumps: ";

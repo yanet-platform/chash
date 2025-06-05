@@ -11,6 +11,7 @@ using namespace test;
 
 TEST(Balancer, Tight)
 {
+	std::cout << "starting tight\n";
 	UpdaterInput input{};
 	auto opt = MakeUpdater(input);
 	ASSERT_TRUE(opt);
@@ -29,14 +30,17 @@ TEST(Balancer, Tight)
 	{
 		ASSERT_NE(dist.find(id), dist.end());
 	}
+	std::cout << "ending tight\n";
 }
 
 TEST(Balancer, Sparse)
 {
+	std::cout << "starting sparse\n";
 	UpdaterInput input{};
 	input.lookup_size *= 3;
 	input.weights = std::vector<Weight>(4, 100);
 	auto opt = MakeUpdater(input);
+	std::cout << "Made updater sparse\n";
 	ASSERT_TRUE(opt);
 	auto& u = opt.value();
 

@@ -8,8 +8,8 @@ namespace test
 using RealId = chash::DefaultConfig::RealId;
 using Weight = chash::DefaultConfig::Weight;
 
-constexpr std::size_t DFLT_MAPPINGS = 100;
-constexpr std::size_t DFLT_CELLS = 20;
+constexpr std::size_t DFLT_MAPPINGS = 1000;
+constexpr std::size_t DFLT_CELLS = 40;
 
 struct UpdaterInput
 {
