@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cmath>
@@ -107,6 +108,37 @@ struct BasicRealInfo
 };
 
 template<typename Config = DefaultConfig>
+class BasicTodoOperation
+{
+	using RealId = typename Config::RealId;
+	static constexpr RealId NOOP = std::numeric_limits<RealId>::max();
+	static constexpr RealId ID_MASK = std::numeric_limits<RealId>::max() >> 1;
+	static constexpr RealId ON_MASK = std::numeric_limits<RealId>::max() ^ ID_MASK;
+	RealId data_ = NOOP;
+
+public:
+	BasicTodoOperation() = default;
+	BasicTodoOperation(bool on, RealId id) : data_{(on ? ON_MASK : 0) | (id & ID_MASK)} {}
+	explicit BasicTodoOperation(RealId data) : data_{data} {}
+	operator bool() const
+	{
+		return data_ == 0;
+	}
+	bool on() const
+	{
+		return data_ & ON_MASK;
+	}
+	uint32_t id() const
+	{
+		return data_ & ID_MASK;
+	}
+	static BasicTodoOperation<Config> noop()
+	{
+		return BasicTodoOperation<Config>{NOOP};
+	}
+};
+
+template<typename Config = DefaultConfig>
 class BasicWeightUpdater
 {
 public:
@@ -135,6 +167,11 @@ public:
 		return lookup_size_;
 	}
 
+	bool Enabled(Index pos)
+	{
+		return enabled_[pos];
+	}
+
 	static Index LookupRequiredSize(Index real_count, Index segments_per_weight)
 	{
 		return real_count * Config::MaxWeight * segments_per_weight;
@@ -151,7 +188,6 @@ public:
 	        Index lookup_size)
 	{
 		auto ts = std::chrono::steady_clock::now();
-		std::cout << "ts\n";
 		if (cnt == 0 ||
 		    side_rings_count + segments_per_weight * Config::MaxWeight == 0 ||
 		    side_rings_count < 1 ||
@@ -173,7 +209,6 @@ public:
 		}
 
 		auto t1 = std::chrono::steady_clock::now();
-		std::cout << "t1\n";
 
 		std::vector<Unweighted<RealId>> unweighted;
 
@@ -656,6 +691,41 @@ public:
 		return patch;
 	}
 
+	void Update(const RealId* ids, const Weight* weights, Index count, std::vector<BasicTodoOperation<Config>>& todo)
+	{
+		for (Index i = 0; i < count; ++i)
+		{
+			auto& id = ids[i];
+			auto& w = weights[i];
+			if ((heads_.find(id) == heads_.end()) || (heads_[id].weight == w))
+			{
+				continue;
+			}
+
+			auto& info = heads_[id];
+
+			auto target = w * segments_per_weight_;
+			auto r = info.heads.begin() + target;
+			auto l = info.heads.begin() + info.enabled;
+			info.enabled = target;
+			info.weight = w;
+
+			BasicTodoOperation<Config> op(r > l, id);
+			if (!op.on())
+			{
+				std::swap(l, r);
+			}
+
+			for (; l != r; ++l)
+			{
+				auto pos = *l;
+				enabled_[pos] = op.on();
+				//todo[pos].store(op, std::memory_order_release);
+				todo[pos] = op;
+			}
+		}
+	}
+
 	void Update(Index* lookup, const BasicPatch<Config>& patch)
 	{
 		if (patch.size() == 0)
@@ -732,7 +802,6 @@ public:
 	 */
 	void InitLookup(RealId* lookup)
 	{
-		std::cout << "Initializing lookup\n";
 		std::fill(lookup, lookup + lookup_size_, Invalid());
 
 		if (Disabled())
@@ -775,6 +844,8 @@ public:
 
 using WeightUpdater = BasicWeightUpdater<DefaultConfig>;
 using Patch = BasicPatch<DefaultConfig>;
+using TodoOperation = BasicTodoOperation<DefaultConfig>;
+using Todo = std::vector<TodoOperation>;
 
 template<typename Real>
 std::optional<WeightUpdater> MakeWeightUpdater(
