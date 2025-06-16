@@ -28,21 +28,21 @@ class Unweighted
 	}
 
 public:
-	template<typename Real>
+	template<typename RealIter, typename IdIter>
 	static Unweighted Make(
 	        IdHash size,
-	        const Real* reals,
-	        const RealId* ids,
-	        std::size_t cnt,
+			IdIter ids_begin,
+			IdIter ids_end,
+			RealIter reals_begin,
 	        Salt salt)
 	{
 		std::vector<Region> regions;
-		regions.reserve(cnt);
+		regions.reserve(std::distance(ids_begin, ids_end));
 		Unweighted ring(size);
-		for (std::size_t i = 0; i < cnt; ++i)
+		for (;ids_begin != ids_end; ++ids_begin, ++reals_begin)
 		{
-			const Real& real = reals[i];
-			const RealId& id = ids[i];
+			const auto& real = *reals_begin;
+			const RealId& id = *ids_begin;
 			auto hash = CalcHash(real, salt);
 			regions.push_back({id, hash % size});
 		}

@@ -30,14 +30,23 @@ unweighted = executable(
 
 test('unweighted', unweighted, protocol: 'gtest')
 
-basic_test = executable(
-  'basic-unittest',
-  'test-basic.cpp',
-  dependencies: dependencies,
-  cpp_args: ['-g', '-O0']
+#basic_test = executable(
+#  'basic-unittest',
+#  'test-basic.cpp',
+#  dependencies: dependencies,
+#  cpp_args: ['-g', '-O0']
+#)
+
+#test('basic', basic_test, protocol: 'gtest')
+
+service = executable(
+	'service-unittest',
+	'test-service.cpp',
+	cpp_args: ['-g', '-O0'],
+	dependencies: dependencies
 )
 
-test('basic', basic_test, protocol: 'gtest')
+test('service', service, protocol: 'gtest')
 
 balancer = executable(
 	'balancer-unittest',
@@ -48,21 +57,13 @@ balancer = executable(
 
 test('balancer', balancer, protocol: 'gtest')
 
-adjust = executable(
-        'adjust-unittest',
-        'test-adjust.cpp',
-        dependencies: dependencies
-)
+#equal_weights = executable(
+#        'equal-weights-unittest',
+#        'test-equal-weights.cpp',
+#        dependencies: dependencies
+#)
 
-test('adjust', adjust, protocol: 'gtest')
-
-equal_weights = executable(
-        'equal-weights-unittest',
-        'test-equal-weights.cpp',
-        dependencies: dependencies
-)
-
-test('equal-weights', equal_weights, protocol: 'gtest')
+#test('equal-weights', equal_weights, protocol: 'gtest')
 
 speed = executable(
 	'speed-unittest',

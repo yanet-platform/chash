@@ -33,10 +33,10 @@ std::optional<chash::WeightUpdater> MakeUpdater(const UpdaterInput& input)
 		size = chash::WeightUpdater::LookupRequiredSize(input.ids.size(), input.cells);
 	}
 	return chash::MakeWeightUpdater(
-	        input.reals.data(),
-	        input.ids.data(),
-	        input.weights.data(),
-	        input.ids.size(),
+	        input.ids.cbegin(),
+	        input.ids.cend(),
+	        input.reals.cbegin(),
+	        input.weights.cbegin(),
 	        input.mappings,
 	        input.cells,
 	        size);

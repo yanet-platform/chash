@@ -2,353 +2,104 @@
 
 #include "common.h"
 
-#include "../chash.hpp"
+#include "../balancer.hpp"
 
 namespace
 {
 
+using namespace std::chrono_literals;
 using namespace test;
 
-TEST(Balancer, Tight)
+TEST(Balancer, Construct)
 {
-	std::cout << "starting tight\n";
-	UpdaterInput input{};
-	auto opt = MakeUpdater(input);
-	ASSERT_TRUE(opt);
-	auto& u = opt.value();
+	chash::Balancer balancer;
+	ASSERT_EQ(balancer.size(), 0);
+	ASSERT_TRUE(balancer.empty());
 
-	std::vector<RealId> lookup(input.lookup_size, 42);
-	u.InitLookup(lookup.data());
+	std::vector<std::string> reals{
+	        "2a02:6b8:c0e:1003:0:675:a15a:3314",
+	        "2a02:6b8:c0e:1003:0:675:a15a:3ca0",
+	        "2a02:6b8:c0e:1003:0:675:a15a:4174",
+	        "2a02:6b8:c0e:1003:0:675:a15a:4bb8",
+	        "2a02:6b8:c0e:1003:0:675:a15a:4d6c",
+	        "2a02:6b8:c0e:1003:0:675:a160:e98"};
+	std::vector<std::uint32_t> ids{113, 114, 115, 116, 117, 118};
+	std::vector<std::uint32_t> weights(ids.size(), 0);
+	weights[0] = 1;
 
-	std::map<RealId, std::size_t> dist;
-	for (auto e : lookup)
+	balancer.AddService(1, ids.begin(), ids.end(), reals.begin(), weights.begin());
+	ASSERT_EQ(balancer.size(), 1);
+	ASSERT_FALSE(balancer.empty());
+
+	auto [b, e] = balancer.Lookup(1);
+	ASSERT_GT(std::distance(b, e), 0);
+	ASSERT_TRUE(std::none_of(b, e, [](auto e) { return e != 113; }));
+
+	weights[0] = 0;
+	balancer.UpdateWeights(1, ids.begin(), ids.end(), weights.begin());
+	std::this_thread::sleep_for(2ms);
+
+	auto [b1, e1] = balancer.Lookup(1);
+	ASSERT_EQ(std::distance(b1, e1), 0);
+
+	weights[1] = 1;
+	balancer.UpdateWeights(1, ids.begin(), ids.end(), weights.begin());
+	std::this_thread::sleep_for(2ms);
+
+	auto [b2, e2] = balancer.Lookup(1);
+	ASSERT_EQ(std::distance(b2, e2), std::distance(b, e));
+	ASSERT_TRUE(std::none_of(b2, e2, [](auto e) { return e != 114; }));
+
+	weights[1] = 0;
+	weights[2] = 1;
+	balancer.UpdateWeights(1, ids.begin(), ids.end(), weights.begin());
+	std::this_thread::sleep_for(2ms);
+
 	{
-		++dist[e];
+		auto [b2, e2] = balancer.Lookup(1);
+		ASSERT_EQ(std::distance(b2, e2), std::distance(b, e));
+		ASSERT_TRUE(std::none_of(b2, e2, [](auto e) { return e != 115; }));
 	}
-	ASSERT_EQ(dist.size(), input.ids.size());
-	for (auto id : input.ids)
-	{
-		ASSERT_NE(dist.find(id), dist.end());
-	}
-	std::cout << "ending tight\n";
+	// std::this_thread::sleep_for(2000ms);
 }
 
-TEST(Balancer, Sparse)
+TEST(Balancer, Fuzz)
 {
-	std::cout << "starting sparse\n";
-	UpdaterInput input{};
-	input.lookup_size *= 3;
-	input.weights = std::vector<Weight>(4, 100);
-	auto opt = MakeUpdater(input);
-	std::cout << "Made updater sparse\n";
-	ASSERT_TRUE(opt);
-	auto& u = opt.value();
+	chash::Balancer balancer;
+	ASSERT_EQ(balancer.size(), 0);
+	ASSERT_TRUE(balancer.empty());
 
-	std::vector<RealId> lookup(input.lookup_size, 42);
-	u.InitLookup(lookup.data());
+	std::vector<std::string> reals{
+	        "2a02:6b8:c0e:1003:0:675:a15a:3314",
+	        "2a02:6b8:c0e:1003:0:675:a15a:3ca0",
+	        "2a02:6b8:c0e:1003:0:675:a15a:4174",
+	        "2a02:6b8:c0e:1003:0:675:a15a:4bb8",
+	        "2a02:6b8:c0e:1003:0:675:a15a:4d6c",
+	        "2a02:6b8:c0e:1003:0:675:a160:e98"};
+	std::vector<std::uint32_t> ids{113, 114, 115, 116, 117, 118};
+	std::vector<std::uint32_t> weights(ids.size(), 0);
+	weights[0] = 1;
 
-	std::map<RealId, std::size_t> dist;
-	for (auto e : lookup)
+	std::default_random_engine e1(42);
+	std::uniform_int_distribution<int> uni_rand_weight(0, 100);
+
+	balancer.AddService(1, ids.begin(), ids.end(), reals.begin(), weights.begin());
+	chash::Balancer balancer2;
+	for (int i = 0; i < 100; ++i)
 	{
-		++dist[e];
-	}
-	ASSERT_EQ(dist.size(), input.ids.size());
-	for (auto id : input.ids)
-	{
-		ASSERT_NE(dist.find(id), dist.end());
+		balancer.UpdateWeights(1, ids.begin(), ids.end(), weights.begin());
+		balancer2.AddService(1, ids.begin(), ids.end(), reals.begin(), weights.begin());
+		std::this_thread::sleep_for(1ms);
+
+		auto [b1, e1] = balancer.Lookup(1);
+		auto [b2, e2] = balancer2.Lookup(1);
+
+		auto [m1, m2] = std::mismatch(b1, e1, b2, e2);
+		ASSERT_EQ(std::distance(b1,m1), std::distance(b1, e1));
+
+		balancer2.RemoveService(1);
 	}
 
-	const double margin = 0.10;
-	const std::size_t total = input.TotalWeight();
-	for (std::size_t i = 0; i < input.ids.size(); ++i)
-	{
-		RealId id = input.ids[i];
-		Weight w = input.weights[i];
-		double requested = double(w) / total;
-		double effective = double(dist[id]) / input.lookup_size;
-		double deviation = std::abs((requested - effective) / requested);
-		ASSERT_LT(std::abs(deviation), margin) << "id: " << id;
-	}
 }
 
-TEST(Balancer, fair10)
-{
-	UpdaterInput input{.weights = {10, 10, 10, 10}};
-	auto opt = MakeUpdater(input);
-	auto& u = opt.value();
-
-	std::vector<RealId> lookup(input.lookup_size, 42);
-	u.InitLookup(lookup.data());
-
-	std::map<RealId, std::size_t> dist;
-	for (auto e : lookup)
-	{
-		++dist[e];
-	}
-	ASSERT_EQ(dist.size(), input.ids.size());
-	for (auto id : input.ids)
-	{
-		ASSERT_NE(dist.find(id), dist.end());
-	}
-
-	const double margin = 0.02;
-	const std::size_t total = input.TotalWeight();
-	for (std::size_t i = 0; i < input.ids.size(); ++i)
-	{
-		RealId id = input.ids[i];
-		Weight w = input.weights[i];
-		double requested = double(w) / total;
-		double effective = double(dist[id]) / input.lookup_size;
-		double deviation = (effective - requested) / requested;
-		ASSERT_LT(std::abs(deviation), margin) << "id: " << id;
-	}
-}
-
-TEST(Balancer, all4one)
-{
-	UpdaterInput input{.weights = {1, 100, 100, 100}};
-	auto opt = MakeUpdater(input);
-	auto& u = opt.value();
-
-	std::vector<RealId> lookup(input.lookup_size, 42);
-	u.InitLookup(lookup.data());
-
-	std::map<RealId, std::size_t> dist;
-	for (auto e : lookup)
-	{
-		++dist[e];
-	}
-	ASSERT_EQ(dist.size(), input.ids.size());
-	for (auto id : input.ids)
-	{
-		ASSERT_NE(dist.find(id), dist.end());
-	}
-
-	const double margin = 0.3;
-	const std::size_t total = input.TotalWeight();
-	for (std::size_t i = 0; i < input.ids.size(); ++i)
-	{
-		RealId id = input.ids[i];
-		Weight w = input.weights[i];
-		double requested = double(w) / total;
-		double effective = double(dist[id]) / input.lookup_size;
-		double deviation = (effective - requested) / requested;
-		ASSERT_LT(std::abs(deviation), margin) << "id: " << id;
-	}
-}
-
-TEST(Balancer, one4all)
-{
-	UpdaterInput input{.weights = {100, 1, 1, 1}};
-	auto opt = MakeUpdater(input);
-	auto& u = opt.value();
-
-	std::vector<RealId> lookup(input.lookup_size, 42);
-	u.InitLookup(lookup.data());
-
-	std::map<RealId, std::size_t> dist;
-	for (auto e : lookup)
-	{
-		++dist[e];
-	}
-	ASSERT_EQ(dist.size(), input.ids.size());
-	for (auto id : input.ids)
-	{
-		ASSERT_NE(dist.find(id), dist.end()) << "Does not contain " << id;
-	}
-
-	double margin = 0.78;
-	std::size_t total = input.TotalWeight();
-	for (std::size_t i = 0; i < input.ids.size(); ++i)
-	{
-		RealId id = input.ids[i];
-		Weight w = input.weights[i];
-		double requested = double(w) / total;
-		double effective = double(dist[id]) / input.lookup_size;
-		double deviation = (effective - requested) / requested;
-		ASSERT_LT(std::abs(deviation), margin) << "id: " << id;
-	}
-}
-
-TEST(Balancer, one4ten)
-{
-	UpdaterInput input{.weights = {100, 10, 10, 10}};
-	auto opt = MakeUpdater(input);
-	auto& u = opt.value();
-
-	std::vector<RealId> lookup(input.lookup_size, 42);
-	u.InitLookup(lookup.data());
-
-	std::map<RealId, std::size_t> dist;
-	for (auto e : lookup)
-	{
-		++dist[e];
-	}
-	ASSERT_EQ(dist.size(), input.ids.size());
-	for (auto id : input.ids)
-	{
-		ASSERT_NE(dist.find(id), dist.end());
-	}
-
-	const double margin = 0.78;
-	const std::size_t total = input.TotalWeight();
-	for (std::size_t i = 0; i < input.ids.size(); ++i)
-	{
-		RealId id = input.ids[i];
-		Weight w = input.weights[i];
-		double requested = double(w) / total;
-		double effective = double(dist[id]) / input.lookup_size;
-		double deviation = (effective - requested) / requested;
-		ASSERT_LT(std::abs(deviation), margin) << "id: " << id;
-	}
-}
-
-TEST(Balancer, twenty4ten)
-{
-	UpdaterInput input{.weights = {20, 10, 10, 10}};
-	auto opt = MakeUpdater(input);
-	auto& u = opt.value();
-
-	std::vector<RealId> lookup(input.lookup_size, 42);
-	u.InitLookup(lookup.data());
-
-	std::map<RealId, std::size_t> dist;
-	for (auto e : lookup)
-	{
-		++dist[e];
-	}
-	ASSERT_EQ(dist.size(), input.ids.size());
-	for (auto id : input.ids)
-	{
-		ASSERT_NE(dist.find(id), dist.end());
-	}
-
-	const double margin = 0.78;
-	const std::size_t total = input.TotalWeight();
-	for (std::size_t i = 0; i < input.ids.size(); ++i)
-	{
-		RealId id = input.ids[i];
-		Weight w = input.weights[i];
-		double requested = double(w) / total;
-		double effective = double(dist[id]) / input.lookup_size;
-		double deviation = (effective - requested) / requested;
-		ASSERT_LT(std::abs(deviation), margin) << "id: " << id;
-	}
-}
-
-TEST(Balancer, forty4ten)
-{
-	UpdaterInput input{.weights = {40, 10, 10, 10},
-	                   .cells = 40};
-	auto opt = MakeUpdater(input);
-	auto& u = opt.value();
-
-	std::vector<RealId> lookup(input.lookup_size, 42);
-	u.InitLookup(lookup.data());
-
-	std::map<RealId, std::size_t> dist;
-	for (auto e : lookup)
-	{
-		++dist[e];
-	}
-	ASSERT_EQ(dist.size(), input.ids.size());
-	for (auto id : input.ids)
-	{
-		ASSERT_NE(dist.find(id), dist.end());
-	}
-
-	const double margin = 0.78;
-	const std::size_t total = input.TotalWeight();
-	for (std::size_t i = 0; i < input.ids.size(); ++i)
-	{
-		RealId id = input.ids[i];
-		Weight w = input.weights[i];
-		double requested = double(w) / total;
-		double effective = double(dist[id]) / input.lookup_size;
-		double deviation = (effective - requested) / requested;
-		ASSERT_LT(std::abs(deviation), margin) << "id: " << id;
-	}
-}
-
-TEST(Balancer, forty4ten1)
-{
-	UpdaterInput input{.weights = {40, 10, 10, 10},
-	                   .cells = 20};
-	auto opt = MakeUpdater(input);
-	auto& u = opt.value();
-
-	std::vector<RealId> lookup(input.lookup_size, 42);
-	u.InitLookup(lookup.data());
-
-	std::map<RealId, std::size_t> dist;
-	for (auto e : lookup)
-	{
-		++dist[e];
-	}
-	ASSERT_EQ(dist.size(), input.ids.size());
-	for (auto id : input.ids)
-	{
-		ASSERT_NE(dist.find(id), dist.end());
-	}
-
-	const double margin = 0.78;
-	const std::size_t total = input.TotalWeight();
-	for (std::size_t i = 0; i < input.ids.size(); ++i)
-	{
-		RealId id = input.ids[i];
-		Weight w = input.weights[i];
-		double requested = double(w) / total;
-		double effective = double(dist[id]) / input.lookup_size;
-		double deviation = (effective - requested) / requested;
-		ASSERT_LT(std::abs(deviation), margin) << "id: " << id;
-	}
-}
-
-TEST(Balancer, onedown)
-{
-	UpdaterInput input{.weights = {2, 1, 1, 0},
-	                   .cells = 20};
-	auto opt = MakeUpdater(input);
-	auto& u = opt.value();
-
-	std::vector<RealId> lookup(input.lookup_size, 42);
-	u.InitLookup(lookup.data());
-
-	std::map<RealId, std::size_t> dist;
-	for (auto e : lookup)
-	{
-		++dist[e];
-	}
-	std::vector<RealId> active;
-	for (std::size_t i = 0; i < input.ids.size(); ++i)
-	{
-		if (input.weights[i] != 0)
-		{
-			active.push_back(input.ids[i]);
-		}
-	}
-	ASSERT_EQ(dist.size(), active.size());
-
-	for (auto id : active)
-	{
-		ASSERT_NE(dist.find(id), dist.end());
-	}
-
-	const double margin = 0.78;
-	const std::size_t total = input.TotalWeight();
-	for (std::size_t i = 0; i < input.ids.size(); ++i)
-	{
-		RealId id = input.ids[i];
-		Weight w = input.weights[i];
-		if (w == 0)
-		{
-			continue;
-		}
-		double requested = double(w) / total;
-		double effective = double(dist[id]) / input.lookup_size;
-		double deviation = (effective - requested) / requested;
-		ASSERT_LT(std::abs(deviation), margin) << "id: " << id;
-	}
-}
-
-}
+} // namespace

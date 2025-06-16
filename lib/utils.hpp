@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <mutex>
 
 namespace chash
 {
@@ -18,5 +19,19 @@ std::size_t NextRingPosition(std::size_t pos)
 }
 
 std::uint8_t PowerOfTwoLowerBound(std::size_t x);
+
+template <typename T>
+class Exclusive
+{
+	std::mutex mx_;
+	T data_;
+public:
+	template<typename F>
+	auto apply(F f)
+	{
+		std::lock_guard guard(mx_);
+		return f(data_);
+	}
+};
 
 } // namespace chash

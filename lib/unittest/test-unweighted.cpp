@@ -18,9 +18,9 @@ TEST(Unweighted, Make)
 	std::vector<std::uint32_t> ids = {1, 2, 3, 4};
 	auto ring = chash::Unweighted<std::uint32_t>::Make(
 		SIZE,
-		reals.data(),
-		ids.data(),
-		ids.size(),
+		ids.cbegin(),
+		ids.cend(),
+		reals.cbegin(),
 		SEED
 	);
 
