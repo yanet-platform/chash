@@ -1,3 +1,4 @@
+#pragma once
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -176,7 +177,7 @@ public:
 	}
 	auto Lookup()
 	{
-		return std::pair{lookup_.cbegin(), disabled_ ? lookup_.cbegin() : lookup_.cend()};
+		return std::pair{lookup_.begin(), disabled_ ? lookup_.begin() : lookup_.end()};
 	}
 };
 
@@ -206,7 +207,6 @@ class Balancer : Logger
 	void UpdaterSweep()
 	{
 		auto patches = patches_.apply([this](PatchBundle& patches) {
-			//need_updater_.store(false, std::memory_order_release);
 			return std::exchange(patches, {});
 		});
 		bool empty = true;
@@ -254,21 +254,27 @@ public:
 		StopUpdater();
 	}
 	template<typename IdIter, typename RealIter, typename WeightIter>
-	void AddService(ServiceId id, IdIter ids_begin, IdIter ids_end, RealIter reals_begin, WeightIter weights_begin)
+	bool AddService(ServiceId id, IdIter ids_begin, IdIter ids_end, RealIter reals_begin, WeightIter weights_begin)
 	{
 		StopUpdater();
 		if (services_.find(id) != services_.end())
 		{
 			Error("Service already exists");
-			return;
+			return false;
 		}
 		auto oservice = Service::MakeService(ids_begin, ids_end, reals_begin, weights_begin);
 		if (!oservice)
 		{
 			Error("Failed to add service ", id, " to balancer");
-			return;
+			return false;
 		}
 		services_.emplace(id, std::move(oservice.value()));
+		return true;
+	}
+
+	bool Contains(ServiceId id)
+	{
+		return (services_.find(id) != services_.end());
 	}
 
 	void ClearServices()
