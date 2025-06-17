@@ -761,7 +761,6 @@ void K1001Weight()
 			for (std::size_t id = 1; id <= cnt; ++id)
 			{
 				auto current_deviate = std::abs(rep[id] / (weight_unit * weights[id - 1]) - 1.0);
-				// std::cout << "PDR: " << id << ": " << rep[id] << ' ' << weights[id - 1] << ' ' << current_deviate << "\n";
 				deviate = std::max(deviate, current_deviate);
 				deviate_sum += current_deviate;
 			}
