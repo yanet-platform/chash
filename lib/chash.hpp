@@ -56,7 +56,6 @@ struct BasicRealInfo
 	std::vector<Index> heads;
 	Index enabled = 0;
 	Index weight = 0;
-	Index cells = 0;
 
 	std::optional<typename Config::Index> EnableOne()
 	{
@@ -93,10 +92,43 @@ struct BasicRealInfo
 		}
 
 		enabled = next_enabled;
-		if (enabled != 0) {
+		if (enabled != 0)
+		{
 			patch.enabled_head = heads.front();
 		}
 		weight = w;
+	}
+
+	void Adjust(BasicPatch<Config>& patch, RealId id, std::int64_t head_diff)
+	{
+		if (weight == 0)
+		{
+			return;
+		}
+
+		std::int32_t saenabled = enabled - head_diff;
+		Index aenabled = std::max<Index>(std::abs(saenabled), 1);
+		aenabled = std::min<Index>(aenabled, heads.size());
+
+		const bool op = aenabled > enabled;
+		auto l = heads.begin() + enabled;
+		auto r = heads.begin() + aenabled;
+
+		if (!op)
+		{
+			std::swap(l, r);
+		}
+
+		for (; l != r; ++l)
+		{
+			patch.operations.emplace(*l, PatchOperation<Config>{id, op});
+		}
+
+		enabled = aenabled;
+		if (enabled != 0)
+		{
+			patch.enabled_head = heads.front();
+		}
 	}
 
 	auto cbegin()
@@ -156,6 +188,11 @@ public:
 private:
 	Index segments_per_weight_;
 	std::unordered_map<RealId, RealInfo> heads_;
+
+public:
+	std::unordered_map<RealId, Index> track;
+
+private:
 	const Index lookup_size_;
 	Index reals_active_ = 0;
 	Index total_weight_ = 0;
@@ -201,7 +238,7 @@ public:
 			RealInfo& info = updater.heads_[*idi];
 			info.enabled = (*wi) * segments_per_weight;
 			info.weight = *wi;
-			updater.total_weight_ += *wi;
+			updater.total_weight_ += info.weight;
 			if (!info.Disabled())
 			{
 				++updater.reals_active_;
@@ -322,44 +359,6 @@ private:
 	}
 
 public:
-	Index ConfiguredCells(Weight weight) const
-	{
-		return static_cast<std::uint64_t>(lookup_size_) * weight / total_weight_;
-	}
-
-	double Deviation(RealInfo& real) const
-	{
-		return (static_cast<double>(real.cells) - ConfiguredCells(real.weight)) / ConfiguredCells(real.weight);
-	}
-
-	std::string Report(RealId* lookup)
-	{
-		std::unordered_map<RealId, Index> dist;
-		std::for_each(lookup, lookup + lookup_size_, [&](RealId id) {
-			++dist[id];
-		});
-		std::stringstream ss;
-		for (auto& [id, count] : dist)
-		{
-			ss << "id: " << id << "count: " << count << "\n";
-		}
-		return ss.str();
-	}
-
-	// struct Update
-	// {
-	// 	enum {
-	// 		Disable,
-	// 		Enable,
-	// 		Update
-	// 	} operation;
-	// 	struct Info{
-	// 		RealId id;
-	// 		bool on;
-	// 	};
-	// 	std::map<Index, Info> segments;
-	// };
-
 	template<typename IdIter, typename WeightIter>
 	BasicPatch<Config> Update(IdIter ids_begin, IdIter ids_end, WeightIter weights_begin)
 	{
@@ -376,6 +375,8 @@ public:
 			{
 				continue;
 			}
+			total_weight_ += *wi;
+			total_weight_ -= info.weight;
 
 			if (info.weight == 0)
 			{
@@ -392,10 +393,11 @@ public:
 
 		if (!patch.enabled_head && !Disabled())
 		{
-			for (const auto& [_, info]: heads_)
+			for (const auto& [_, info] : heads_)
 			{
 				GCC_BUG_UNUSED(_);
-				if (info.enabled != 0) {
+				if (info.enabled != 0)
+				{
 					patch.enabled_head = info.heads.front();
 					break;
 				}
@@ -405,12 +407,31 @@ public:
 		return patch;
 	}
 
+	BasicPatch<Config> Adjust()
+	{
+		BasicPatch<Config> patch;
+		for (auto& [id, info] : heads_)
+		{
+			std::int32_t head_diff = (track[id] * total_weight_ / lookup_size_ - info.weight) * segments_per_weight_;
+			if (head_diff < 0)
+			{
+				head_diff = std::max<std::int32_t>(head_diff, -segments_per_weight_ / 2);
+			}
+			else
+			{
+				head_diff = std::min<std::int32_t>(head_diff, segments_per_weight_ / 2);
+			}
+			info.Adjust(patch, id, head_diff);
+		}
+		return patch;
+	}
+
 	static bool Valid(RealId id)
 	{
 		return id != std::numeric_limits<RealId>::max();
 	}
 
-	static RealId Invalid()
+	static constexpr RealId Invalid()
 	{
 		return std::numeric_limits<RealId>::max();
 	}
@@ -424,8 +445,11 @@ public:
 	void InitLookup(IdIter lookup_begin, HIter enabled_begin)
 	{
 		*lookup_begin = Invalid();
+		track.clear();
 		if (Disabled())
 		{
+			track[Invalid()] = lookup_size_;
+			std::cerr << "PDR: InitLookup: disabled\n";
 			return;
 		}
 		std::fill(enabled_begin, enabled_begin + lookup_size_, false);
@@ -437,23 +461,33 @@ public:
 			              info.cbegin() + info.enabled,
 			              [&](const Index& pos) {
 				              *(lookup_begin + pos) = id;
-							  *(enabled_begin + pos) = true;
+				              *(enabled_begin + pos) = true;
 				              last = std::max(last, pos);
 			              });
 		}
 
 		RealId tint = *(lookup_begin + last);
-
+		Index prev{};
 		for (Index pos = 0; pos < lookup_size_; ++pos)
 		{
 			if (*(enabled_begin + pos))
 			{
+				track[tint] += pos - prev;
+				prev = pos;
 				tint = *(lookup_begin + pos);
 			}
 			*(lookup_begin + pos) = tint;
-			++heads_[tint].cells;
 		}
-
+		track[tint] += lookup_size_ - prev;
+		// std::stringstream ss;
+		// ss << "InitLookup:\n";
+		// Index sum{};
+		// for (auto& [id,count]: track)
+		// {
+		// 	ss << "  " << id << ": " << count << "\n";
+		// 	sum += count;
+		// }
+		// std::cerr << "PDR: " << ss.str() << " total: " << sum << "\n";
 	}
 
 	bool Disabled() const

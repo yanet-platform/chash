@@ -34,8 +34,6 @@ class Service : Logger
 	std::vector<bool> enabled_;
 	bool disabled_ = true;
 	std::vector<RealId> lookup_;
-	std::function<void()> on_ready_;
-	std::function<void()> on_not_ready_;
 
 	Service(WeightUpdater&& st) :
 	        state_{std::move(st)},
@@ -46,54 +44,34 @@ class Service : Logger
 
 public:
 	template<typename IdIter, typename RealIter, typename WeightIter>
-	static std::optional<Service> MakeService(IdIter ids_begin, IdIter ids_end, RealIter reals_begin, WeightIter weights_begin)
+	static std::optional<Service> MakeService(IdIter ids_begin,
+	                                          IdIter ids_end,
+	                                          RealIter reals_begin,
+	                                          WeightIter weights_begin)
 	{
 		auto oupdater = MakeWeightUpdater(
 		        ids_begin,
 		        ids_end,
 		        reals_begin,
 		        weights_begin,
-		        1000,
-		        40);
+		        200,
+		        16);
 		if (!oupdater)
 		{
 			return std::nullopt;
 		}
 		Service s(std::move(oupdater.value()));
 		s.InitLookup();
+		//s.AdjustState();
 		return s;
-	}
-
-	void Disable()
-	{
-		disabled_ = true;
-		if (on_not_ready_)
-		{
-			on_not_ready_();
-		}
 	}
 
 	void InitLookup()
 	{
 		state_.InitLookup(lookup_.begin(), enabled_.begin());
-		disabled_ = lookup_.front() == state_.Invalid();
-		if (disabled_)
-		{
-			if (on_not_ready_)
-			{
-				on_not_ready_();
-			}
-		}
-		else
-		{
-			if (on_ready_)
-			{
-				on_ready_();
-			}
-		}
 	}
 
-	void UpdateLookup(const Patch& patch)
+	void __attribute__ ((noinline)) UpdateLookup(const Patch& patch)
 	{
 		const auto& [ops, ostart] = patch;
 		// no enabled head to split at means service is disabled
@@ -103,10 +81,11 @@ public:
 			{
 				enabled_[pos] = false;
 			}
-			disabled_ = true;
-			if (on_not_ready_)
+			if (lookup_.front() != state_.Invalid())
 			{
-				on_not_ready_();
+				std::fill(lookup_.begin(), lookup_.end(), state_.Invalid());
+				state_.track.clear();
+				state_.track[state_.Invalid()] = lookup_.size();
 			}
 			return;
 		}
@@ -131,13 +110,23 @@ public:
 			}
 
 			enabled_[current] = op.on;
-			lookup_[current] = tint;
-			for (Index pos = NextRingPosition(lookup_.size(), current);
+			//const RealId old = std::exchange(lookup_[current], tint);
+			//state_.track[old] -= 1;
+			//state_.track[tint] += 1;
+
+			Index pos = NextRingPosition(lookup_.size(), current);
+			for (;
 			     !enabled_[pos] && pos != next;
 			     pos = NextRingPosition(lookup_.size(), pos))
 			{
+				//state_.track[lookup_[pos]] -= 1;
 				lookup_[pos] = tint;
+				//state_.track[tint] += 1;
 			}
+
+			// const auto cnt = (next > current) ? next - current : lookup_.size() - next + current;
+			// state_.track[old] -= cnt;
+			// state_.track[tint] += cnt;
 		};
 
 		for (auto op = ops_split; op != ops.cend(); ++op)
@@ -160,14 +149,21 @@ public:
 			up(op->first, op->second, next_op->first);
 		}
 
-		if (disabled_)
-		{
-			disabled_ = false;
-			if (on_ready_)
-			{
-				on_ready_();
-			}
-		}
+		// std::stringstream ss;
+		// for (auto [id, cnt] : state_.track)
+		// {
+		// 	ss << id << ": " << cnt << "\n";
+		// }
+
+		// Error(ss.str());
+
+		disabled_ = false;
+	}
+
+	void AdjustState()
+	{
+		Patch patch = state_.Adjust();
+		UpdateLookup(patch);
 	}
 
 	template<typename IdIter, typename WeightIter>
@@ -177,92 +173,42 @@ public:
 	}
 	auto Lookup()
 	{
-		return std::pair{lookup_.begin(), disabled_ ? lookup_.begin() : lookup_.end()};
+		return std::pair{lookup_.data(), lookup_.size()};
+	}
+	std::vector<RealId>&& MoveLookup()
+	{
+		return std::move(lookup_);
 	}
 };
-
-namespace
-{
-void PatchPatch(Patch& p, Patch& pp)
-{
-	p.operations.merge(pp.operations);
-	for (auto& [idx, op] : pp.operations)
-	{
-		p.operations.at(idx) = op;
-	}
-	p.enabled_head = pp.enabled_head;
-}
-
-}
 
 class Balancer : Logger
 {
 	using ServiceId = std::uint32_t;
+	using RealId = std::uint32_t;
 	using PatchBundle = std::unordered_map<ServiceId, Patch>;
 	std::unordered_map<ServiceId, Service> services_;
-	std::thread updater_;
 	std::atomic<bool> need_updater_;
-	Exclusive<PatchBundle> patches_;
-
-	void UpdaterSweep()
-	{
-		auto patches = patches_.apply([this](PatchBundle& patches) {
-			return std::exchange(patches, {});
-		});
-		bool empty = true;
-		for (auto& [sid, patch] : patches)
-		{
-			empty &= patch.operations.empty();
-			services_.at(sid).UpdateLookup(patch);
-		}
-		if (empty)
-		{
-			using namespace std::chrono_literals;
-			std::this_thread::sleep_for(1ms);
-		}
-	}
-
-	void StopUpdater()
-	{
-		need_updater_.store(false, std::memory_order_release);
-		if (updater_.joinable())
-		{
-			updater_.join();
-			Debug("Joined lookup updater thread");
-		}
-	}
-
-	void StartUpdater()
-	{
-		need_updater_.store(true, std::memory_order_release);
-		if (!updater_.joinable())
-		{
-			updater_ = std::thread([this]() {
-				Debug("Started Updater thread");
-				while (need_updater_.load(std::memory_order_acquire))
-				{
-					UpdaterSweep();
-				};
-				Debug("Ending Updater thread");
-			});
-		}
-	}
+	PatchBundle patches_;
+	std::vector<std::vector<RealId>> stale_lookups_;
 
 public:
-	~Balancer()
-	{
-		StopUpdater();
-	}
 	template<typename IdIter, typename RealIter, typename WeightIter>
-	bool AddService(ServiceId id, IdIter ids_begin, IdIter ids_end, RealIter reals_begin, WeightIter weights_begin)
+	bool AddService(ServiceId id,
+	                IdIter ids_begin,
+	                IdIter ids_end,
+	                RealIter reals_begin,
+	                WeightIter weights_begin)
 	{
-		StopUpdater();
 		if (services_.find(id) != services_.end())
 		{
 			Error("Service already exists");
 			return false;
 		}
-		auto oservice = Service::MakeService(ids_begin, ids_end, reals_begin, weights_begin);
+		auto oservice = Service::MakeService(
+		        ids_begin,
+		        ids_end,
+		        reals_begin,
+		        weights_begin);
 		if (!oservice)
 		{
 			Error("Failed to add service ", id, " to balancer");
@@ -279,11 +225,18 @@ public:
 
 	void ClearServices()
 	{
-		StopUpdater();
 		services_.clear();
-		patches_.apply([](PatchBundle& patches) {
-			patches = PatchBundle{};
-		});
+		stale_lookups_.reserve(stale_lookups_.size() + services_.size());
+		for (auto& svc : services_)
+		{
+			stale_lookups_.emplace_back(svc.second.MoveLookup());
+		}
+		patches_.clear();
+	}
+
+	void ClearStale()
+	{
+		stale_lookups_.clear();
 	}
 
 	std::size_t size() const
@@ -301,23 +254,6 @@ public:
 		return services_.at(id).Lookup();
 	}
 
-	void RemoveService(ServiceId id)
-	{
-		if (auto svc = services_.find(id); svc != services_.end())
-		{
-			StopUpdater();
-			svc->second.Disable();
-			services_.erase(id);
-			patches_.apply([id](PatchBundle& patches){
-				patches.erase(id);
-			});
-			if (!services_.empty())
-			{
-				StartUpdater();
-			}
-		}
-	}
-
 	template<typename IdIter, typename WeightIter>
 	void UpdateWeights(ServiceId id, IdIter ids_begin, IdIter ids_end, WeightIter weights_begin)
 	{
@@ -325,15 +261,22 @@ public:
 		{
 			auto& [sid, service] = *it;
 
-			Patch patch = service.UpdateState(ids_begin, ids_end, weights_begin);
-			patches_.apply([&sid, &patch, this](PatchBundle& patches) {
-				PatchPatch(patches[sid], patch);
-				StartUpdater();
-			});
+			patches_[sid] = service.UpdateState(ids_begin, ids_end, weights_begin);
 		}
 		else
 		{
 			Error("Service ", id, " not found");
+		}
+	}
+	void UpdateLookups()
+	{
+		for (auto& [sid, patch] : patches_)
+		{
+			if (services_.find(sid) == services_.end())
+			{
+				Error("Patch for nonexistent service ", sid);
+			}
+			services_.at(sid).UpdateLookup(patch);
 		}
 	}
 };

@@ -1,6 +1,5 @@
 project('chash', 'cpp', default_options: [
-												'cpp_std=c++17',
-												'b_lto=true'
+												'cpp_std=c++17'
 											])
 
 #add_global_arguments(['-Ofast'], language : 'cpp')
