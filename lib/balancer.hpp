@@ -63,7 +63,7 @@ public:
 		}
 		Service s(std::move(oupdater.value()));
 		s.InitLookup();
-		// s.AdjustState();
+		s.AdjustState();
 		return s;
 	}
 
@@ -72,7 +72,7 @@ public:
 		state_.InitLookup(lookup_.begin(), enabled_.begin());
 	}
 
-	void __attribute__((noinline)) UpdateLookup(const Patch& patch)
+	void UpdateLookup(const Patch& patch)
 	{
 		const auto& [on, off, offstart] = patch;
 		// no enabled head to split at means service is disabled
@@ -174,10 +174,7 @@ public:
 
 	void AdjustState()
 	{
-#if ADJUST
-		Patch patch = state_.Adjust();
-		UpdateLookup(patch);
-#endif
+		state_.Adjust(lookup_.data(), enabled_);
 	}
 
 	template<typename IdIter, typename WeightIter>
@@ -291,6 +288,7 @@ public:
 				Error("Patch for nonexistent service ", sid);
 			}
 			services_.at(sid).UpdateLookup(patch);
+			services_.at(sid).AdjustState();
 		}
 	}
 };

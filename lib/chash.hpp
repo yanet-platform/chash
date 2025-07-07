@@ -415,26 +415,101 @@ public:
 		return patch;
 	}
 
-#if ADJUST
-	BasicPatch<Config> Adjust()
+	inline double Deviation(RealId id)
 	{
-		BasicPatch<Config> patch;
-		for (auto& [id, info] : heads_)
+		if (heads_.at(id).weight == 0)
 		{
-			std::int32_t head_diff = (track[id] * total_weight_ / lookup_size_ - info.weight) * segments_per_weight_;
-			if (head_diff < 0)
-			{
-				head_diff = std::max<std::int32_t>(head_diff, -segments_per_weight_ / 2);
-			}
-			else
-			{
-				head_diff = std::min<std::int32_t>(head_diff, segments_per_weight_ / 2);
-			}
-			info.Adjust(patch, id, head_diff);
+			return 0.0;
 		}
-		return patch;
+		//std::size_t target = heads_.at(id).weight * lookup_size_ / total_weight_;
+		return static_cast<double>(track.at(id) * total_weight_) /
+		               (heads_.at(id).weight * static_cast<std::uint64_t>(lookup_size_)) -
+		       1;
 	}
-#endif
+
+	void Adjust(RealId* lookup, std::vector<bool>& enabled)
+	{
+		std::vector<RealId> ids;
+		ids.resize(heads_.size());
+		std::transform(heads_.begin(), heads_.end(), ids.begin(), [](const auto& p) { return p.first; });
+		std::sort(ids.begin(), ids.end(), [this](RealId a, RealId b) { return std::abs(Deviation(a)) > std::abs(Deviation(b)); });
+
+		double tolerance = 0.1;
+		for (auto id : ids)
+		{
+			if (std::abs(Deviation(id)) < tolerance)
+			{
+				return;
+			}
+
+			while (Deviation(id) > tolerance)
+			{
+				auto opt = heads_[id].DisableOne();
+				if (!opt)
+				{
+					break;
+				}
+
+				Index i = opt.value();
+				RealId old = lookup[i];
+				enabled[i] = false;
+				RealId tint = lookup[PrevRingPosition(lookup_size_, i)];
+				for (; !enabled[i]; ++i)
+				{
+					lookup[i] = tint;
+				}
+
+				const Index l = i - opt.value();
+				track[old] -= l;
+				track[tint] += l;
+
+				if (lookup[lookup_size_ - 1] != lookup[0])
+				{
+					Index i = 0;
+					RealId tint = lookup[lookup_size_ - 1];
+					for (; !enabled[i]; ++i)
+					{
+						lookup[i] = tint;
+					}
+					track[old] -= i;
+					track[tint] += i;
+				}
+			}
+
+			while (Deviation(id) < -tolerance)
+			{
+				auto opt = heads_[id].EnableOne();
+				if (!opt)
+				{
+					break;
+				}
+
+				enabled[opt.value()] = true;
+				lookup[opt.value()] = id;
+				Index i = opt.value() + 1;
+				RealId old = lookup[i];
+				for (; !enabled[i]; ++i)
+				{
+					lookup[i] = id;
+				}
+
+				const Index l = i - opt.value();
+				track[old] -= l;
+				track[id] += l;
+
+				if (lookup[lookup_size_ - 1] != lookup[0])
+				{
+					Index i = 0;
+					for (; !enabled[i]; ++i)
+					{
+						lookup[i] = id;
+					}
+					track[old] -= i;
+					track[id] += i;
+				}
+			}
+		}
+	}
 
 	static bool Valid(RealId id)
 	{
