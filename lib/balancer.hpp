@@ -37,9 +37,10 @@ class Service : Logger
 
 	Service(WeightUpdater&& st) :
 	        state_{std::move(st)},
-	        enabled_(state_.LookupSize(), false),
+	        enabled_(state_.LookupSize() + 1, false),
 	        lookup_(state_.LookupSize(), 0)
 	{
+		enabled_.back() = true; // Marker for updater to signal end of ring
 	}
 
 public:
@@ -62,7 +63,7 @@ public:
 		}
 		Service s(std::move(oupdater.value()));
 		s.InitLookup();
-		//s.AdjustState();
+		// s.AdjustState();
 		return s;
 	}
 
@@ -71,13 +72,13 @@ public:
 		state_.InitLookup(lookup_.begin(), enabled_.begin());
 	}
 
-	void __attribute__ ((noinline)) UpdateLookup(const Patch& patch)
+	void __attribute__((noinline)) UpdateLookup(const Patch& patch)
 	{
-		const auto& [ops, ostart] = patch;
+		const auto& [on, off, offstart] = patch;
 		// no enabled head to split at means service is disabled
-		if (!ostart)
+		if (state_.Disabled())
 		{
-			for (auto& [pos, op] : ops)
+			for (auto pos : off)
 			{
 				enabled_[pos] = false;
 			}
@@ -90,80 +91,75 @@ public:
 			return;
 		}
 
-		if (ops.size() == 0)
+		for (const auto& [pos, id] : on)
+		{
+			enabled_[pos] = true;
+			lookup_[pos] = id;
+		}
+
+		for (const auto& [pos, id] : on)
+		{
+			for (Index i = pos + 1; !enabled_[i]; ++i)
+			{
+				lookup_[i] = id;
+			}
+		}
+
+		// Ring seam
+		if (!enabled_.front() && lookup_.front() != lookup_.back())
+		{
+			const RealId tint = lookup_.back();
+			for (Index i = 0; !enabled_[i]; ++i)
+			{
+				lookup_[i] = tint;
+			}
+		}
+
+		if (off.empty())
 		{
 			return;
 		}
-		Index start = ostart.value();
 
-		auto ops_split = ops.lower_bound(start);
+		auto off_split = std::lower_bound(off.begin(), off.end(), offstart.value());
 
-		auto up = [&](Index current, const PatchOperation<DefaultConfig>& op, Index next) {
-			RealId tint;
-			if (op.on)
-			{
-				tint = op.id;
-			}
-			else
-			{
-				tint = lookup_[PrevRingPosition(lookup_.size(), current)];
-			}
-
-			enabled_[current] = op.on;
-			//const RealId old = std::exchange(lookup_[current], tint);
-			//state_.track[old] -= 1;
-			//state_.track[tint] += 1;
-
-			Index pos = NextRingPosition(lookup_.size(), current);
-			for (;
-			     !enabled_[pos] && pos != next;
-			     pos = NextRingPosition(lookup_.size(), pos))
-			{
-				//state_.track[lookup_[pos]] -= 1;
-				lookup_[pos] = tint;
-				//state_.track[tint] += 1;
-			}
-
-			// const auto cnt = (next > current) ? next - current : lookup_.size() - next + current;
-			// state_.track[old] -= cnt;
-			// state_.track[tint] += cnt;
-		};
-
-		for (auto op = ops_split; op != ops.cend(); ++op)
+		for (auto hit = off_split; hit != off.cend(); ++hit)
 		{
-			auto next_op = std::next(op);
-			if (next_op == ops.cend())
+			RealId tint = lookup_[PrevRingPosition(lookup_.size(), *hit)];
+			enabled_[*hit] = false;
+			for (Index i = *hit; !enabled_[i]; ++i)
 			{
-				next_op = ops.begin();
+				lookup_[i] = tint;
 			}
-			up(op->first, op->second, next_op->first);
 		}
 
-		for (auto op = ops.cbegin(); op != ops_split; ++op)
+		// Ring seam
+		if (!enabled_.front() && lookup_.front() != lookup_.back())
 		{
-			auto next_op = std::next(op);
-			if (next_op == ops.cend())
+			for (Index i = 0; !enabled_[i]; ++i)
 			{
-				next_op = ops.begin();
+				lookup_[i] = lookup_.back();
 			}
-			up(op->first, op->second, next_op->first);
 		}
 
-		// std::stringstream ss;
-		// for (auto [id, cnt] : state_.track)
-		// {
-		// 	ss << id << ": " << cnt << "\n";
-		// }
-
-		// Error(ss.str());
+		for (auto hit = off.cbegin(); hit != off_split; ++hit)
+		{
+			RealId tint = lookup_[PrevRingPosition(lookup_.size(), *hit)];
+			enabled_[*hit] = false;
+			for (Index i = *hit; !enabled_[i]; ++i)
+			{
+				lookup_[i] = tint;
+			}
+		}
 
 		disabled_ = false;
 	}
 
 	void AdjustState()
 	{
+#if ADJUST
 		Patch patch = state_.Adjust();
 		UpdateLookup(patch);
+#endif
 	}
 
 	template<typename IdIter, typename WeightIter>

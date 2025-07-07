@@ -43,8 +43,11 @@ struct PatchOperation
 template<typename Config>
 struct BasicPatch
 {
-	std::map<typename Config::Index, PatchOperation<Config>> operations;
-	std::optional<typename Config::Index> enabled_head;
+	using Index = typename Config::Index;
+	using RealId = typename Config::RealId;
+	std::vector<std::pair<Index, RealId>> on;
+	std::vector<Index> off;
+	std::optional<Index> offstart;
 };
 
 template<typename Config>
@@ -75,30 +78,28 @@ struct BasicRealInfo
 		return heads[--enabled];
 	}
 
-	void Update(BasicPatch<Config>& patch, RealId id, Weight w, Index segments_per_weight_unit)
+	void Update(BasicPatch<Config>& patch, RealId id, Weight w, Index enabled_request)
 	{
 		auto l = heads.begin() + enabled;
-		const auto next_enabled = std::min(w * segments_per_weight_unit, static_cast<Index>(heads.size()));
+		const auto next_enabled = std::min<Index>(enabled_request, heads.size());
 		auto r = heads.begin() + next_enabled;
-		const bool op = next_enabled > enabled;
-		if (!op)
+		weight = w;
+		if (next_enabled < enabled)
 		{
-			std::swap(l, r);
+			patch.off.insert(patch.off.end(), r, l);
+			enabled = next_enabled;
+			return;
 		}
 
 		for (; l != r; ++l)
 		{
-			patch.operations.emplace(*l, PatchOperation<Config>{id, op});
+			patch.on.emplace_back(*l, id);
 		}
 
 		enabled = next_enabled;
-		if (enabled != 0)
-		{
-			patch.enabled_head = heads.front();
-		}
-		weight = w;
 	}
 
+#if ADJUST
 	void Adjust(BasicPatch<Config>& patch, RealId id, std::int64_t head_diff)
 	{
 		if (weight == 0)
@@ -130,6 +131,7 @@ struct BasicRealInfo
 			patch.enabled_head = heads.front();
 		}
 	}
+#endif
 
 	auto cbegin()
 	{
@@ -236,8 +238,8 @@ public:
 		for (auto idi = ids_begin; idi != ids_end; ++idi, ++wi)
 		{
 			RealInfo& info = updater.heads_[*idi];
-			info.enabled = (*wi) * segments_per_weight;
-			info.weight = *wi;
+			info.weight = std::min<typename Config::Weight>(*wi, Config::MaxWeight);
+			info.enabled = (info.weight) * segments_per_weight;
 			updater.total_weight_ += info.weight;
 			if (!info.Disabled())
 			{
@@ -383,7 +385,7 @@ public:
 				++reals_active_;
 			}
 
-			info.Update(patch, *idi, *wi, segments_per_weight_);
+			info.Update(patch, *idi, *wi, *wi * segments_per_weight_);
 
 			if (*wi == 0)
 			{
@@ -391,22 +393,29 @@ public:
 			}
 		}
 
-		if (!patch.enabled_head && !Disabled())
+		if (!patch.on.empty())
+		{
+			patch.offstart = patch.on.front().first;
+		}
+		else if (!patch.off.empty() && !Disabled())
 		{
 			for (const auto& [_, info] : heads_)
 			{
 				GCC_BUG_UNUSED(_);
 				if (info.enabled != 0)
 				{
-					patch.enabled_head = info.heads.front();
+					patch.offstart = info.heads.front();
 					break;
 				}
 			}
 		}
 
+		std::sort(patch.off.begin(), patch.off.end());
+
 		return patch;
 	}
 
+#if ADJUST
 	BasicPatch<Config> Adjust()
 	{
 		BasicPatch<Config> patch;
@@ -425,6 +434,7 @@ public:
 		}
 		return patch;
 	}
+#endif
 
 	static bool Valid(RealId id)
 	{
@@ -449,7 +459,6 @@ public:
 		if (Disabled())
 		{
 			track[Invalid()] = lookup_size_;
-			std::cerr << "PDR: InitLookup: disabled\n";
 			return;
 		}
 		std::fill(enabled_begin, enabled_begin + lookup_size_, false);
