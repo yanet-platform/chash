@@ -488,15 +488,6 @@ public:
 			*(lookup_begin + pos) = tint;
 		}
 		track[tint] += lookup_size_ - prev;
-		// std::stringstream ss;
-		// ss << "InitLookup:\n";
-		// Index sum{};
-		// for (auto& [id,count]: track)
-		// {
-		// 	ss << "  " << id << ": " << count << "\n";
-		// 	sum += count;
-		// }
-		// std::cerr << "PDR: " << ss.str() << " total: " << sum << "\n";
 	}
 
 	bool Disabled() const

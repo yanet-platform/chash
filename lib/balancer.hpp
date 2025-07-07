@@ -99,20 +99,29 @@ public:
 
 		for (const auto& [pos, id] : on)
 		{
-			for (Index i = pos + 1; !enabled_[i]; ++i)
+			const RealId old = lookup_[pos];
+			Index i = pos + 1;
+			for (; !enabled_[i]; ++i)
 			{
 				lookup_[i] = id;
 			}
+			const Index l = i - pos;
+			state_.track[old] -= l;
+			state_.track[id] += l;
 		}
 
 		// Ring seam
 		if (!enabled_.front() && lookup_.front() != lookup_.back())
 		{
+			const RealId old = lookup_.front();
 			const RealId tint = lookup_.back();
-			for (Index i = 0; !enabled_[i]; ++i)
+			Index i = 0;
+			for (; !enabled_[i]; ++i)
 			{
 				lookup_[i] = tint;
 			}
+			state_.track[tint] += i;
+			state_.track[old] -= i;
 		}
 
 		if (off.empty())
@@ -122,33 +131,42 @@ public:
 
 		auto off_split = std::lower_bound(off.begin(), off.end(), offstart.value());
 
-		for (auto hit = off_split; hit != off.cend(); ++hit)
-		{
-			RealId tint = lookup_[PrevRingPosition(lookup_.size(), *hit)];
-			enabled_[*hit] = false;
-			for (Index i = *hit; !enabled_[i]; ++i)
+		auto turn_off = [&](const RealId& h) {
+			const RealId tint = lookup_[PrevRingPosition(lookup_.size(), h)];
+			const RealId old = lookup_[h];
+			enabled_[h] = false;
+			Index i = h;
+			for (; !enabled_[i]; ++i)
 			{
 				lookup_[i] = tint;
 			}
+			const Index l = i - h;
+			state_.track[tint] += l;
+			state_.track[old] -= l;
+
+		};
+
+		for (auto hit = off_split; hit != off.cend(); ++hit)
+		{
+			turn_off(*hit);
 		}
 
 		// Ring seam
 		if (!enabled_.front() && lookup_.front() != lookup_.back())
 		{
-			for (Index i = 0; !enabled_[i]; ++i)
+			const RealId old = lookup_.front();
+			Index i = 0;
+			for (; !enabled_[i]; ++i)
 			{
 				lookup_[i] = lookup_.back();
 			}
+			state_.track[lookup_.back()] += i;
+			state_.track[old] -= i;
 		}
 
 		for (auto hit = off.cbegin(); hit != off_split; ++hit)
 		{
-			RealId tint = lookup_[PrevRingPosition(lookup_.size(), *hit)];
-			enabled_[*hit] = false;
-			for (Index i = *hit; !enabled_[i]; ++i)
-			{
-				lookup_[i] = tint;
-			}
+			turn_off(*hit);
 		}
 
 		disabled_ = false;
