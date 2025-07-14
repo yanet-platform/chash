@@ -94,12 +94,12 @@ public:
 		for (const auto& [pos, id] : on)
 		{
 			enabled_[pos] = true;
-			lookup_[pos] = id;
 		}
 
 		for (const auto& [pos, id] : on)
 		{
 			const RealId old = lookup_[pos];
+			lookup_[pos] = id;
 			Index i = pos + 1;
 			for (; !enabled_[i]; ++i)
 			{
@@ -289,6 +289,14 @@ public:
 			}
 			services_.at(sid).UpdateLookup(patch);
 			services_.at(sid).AdjustState();
+		}
+	}
+	void AdjustLookups()
+	{
+		for (auto& [_, svc] : services_)
+		{
+			GCC_BUG_UNUSED(_);
+			svc.AdjustState();
 		}
 	}
 };

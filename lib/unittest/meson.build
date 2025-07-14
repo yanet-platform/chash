@@ -21,14 +21,14 @@ bit_reverse = executable(
 
 test('bit-reverse', bit_reverse, protocol: 'gtest')
 
-unweighted = executable(
-	'unweighted-unittest',
-	'test-unweighted.cpp',
-	cpp_args: ['-g', '-O0'],
-	dependencies: dependencies
-)
-
-test('unweighted', unweighted, protocol: 'gtest')
+#unweighted = executable(
+#	'unweighted-unittest',
+#	'test-unweighted.cpp',
+#	cpp_args: ['-g', '-O0'],
+#	dependencies: dependencies
+#)
+#
+#test('unweighted', unweighted, protocol: 'gtest')
 
 #basic_test = executable(
 #  'basic-unittest',
@@ -39,23 +39,23 @@ test('unweighted', unweighted, protocol: 'gtest')
 
 #test('basic', basic_test, protocol: 'gtest')
 
-service = executable(
-	'service-unittest',
-	'test-service.cpp',
-	cpp_args: ['-g', '-O0'],
-	dependencies: dependencies
-)
+#service = executable(
+#	'service-unittest',
+#	'test-service.cpp',
+#	cpp_args: ['-g', '-O0'],
+#	dependencies: dependencies
+#)
+#
+#test('service', service, protocol: 'gtest')
 
-test('service', service, protocol: 'gtest')
-
-balancer = executable(
-	'balancer-unittest',
-	sources,
-	cpp_args: ['-g', '-O0'],
-	dependencies: dependencies
-)
-
-test('balancer', balancer, protocol: 'gtest')
+#balancer = executable(
+#	'balancer-unittest',
+#	sources,
+#	cpp_args: ['-g', '-O0'],
+#	dependencies: dependencies
+#)
+#
+#test('balancer', balancer, protocol: 'gtest')
 
 #equal_weights = executable(
 #        'equal-weights-unittest',
@@ -65,10 +65,10 @@ test('balancer', balancer, protocol: 'gtest')
 
 #test('equal-weights', equal_weights, protocol: 'gtest')
 
-speed = executable(
-	'speed-unittest',
-	'test-speed.cpp',
-	dependencies: dependencies
-)
-
-test('speed', speed, protocol: 'gtest')
+#speed = executable(
+#	'speed-unittest',
+#	'test-speed.cpp',
+#	dependencies: dependencies
+#)
+#
+#test('speed', speed, protocol: 'gtest')

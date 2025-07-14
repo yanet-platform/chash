@@ -1,3 +1,4 @@
+#if MOVED
 #pragma once
 #include <cstdint>
 #include <mutex>
@@ -48,3 +49,4 @@ public:
 };
 
 } // namespace chash
+#endif

@@ -1,3 +1,4 @@
+#if MOVED
 #include "utils.hpp"
 
 namespace chash
@@ -14,3 +15,4 @@ std::size_t PrevRingPosition(std::size_t ring_size, std::size_t pos)
 }
 
 } // namespace chash
+#endif

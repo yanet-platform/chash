@@ -29,17 +29,7 @@ struct BasicRealConfig
 	typename Config::Weight weight;
 };
 
-template<typename Config>
-struct PatchOperation
-{
-	using RealId = typename Config::RealId;
-	RealId id;
-	bool on;
-	PatchOperation(RealId i, bool o) : id{i}, on{o}
-	{
-	}
-};
-
+#if MOVED
 template<typename Config>
 struct BasicPatch
 {
@@ -99,40 +89,6 @@ struct BasicRealInfo
 		enabled = next_enabled;
 	}
 
-#if ADJUST
-	void Adjust(BasicPatch<Config>& patch, RealId id, std::int64_t head_diff)
-	{
-		if (weight == 0)
-		{
-			return;
-		}
-
-		std::int32_t saenabled = enabled - head_diff;
-		Index aenabled = std::max<Index>(std::abs(saenabled), 1);
-		aenabled = std::min<Index>(aenabled, heads.size());
-
-		const bool op = aenabled > enabled;
-		auto l = heads.begin() + enabled;
-		auto r = heads.begin() + aenabled;
-
-		if (!op)
-		{
-			std::swap(l, r);
-		}
-
-		for (; l != r; ++l)
-		{
-			patch.operations.emplace(*l, PatchOperation<Config>{id, op});
-		}
-
-		enabled = aenabled;
-		if (enabled != 0)
-		{
-			patch.enabled_head = heads.front();
-		}
-	}
-#endif
-
 	auto cbegin()
 	{
 		return heads.cbegin();
@@ -146,37 +102,7 @@ struct BasicRealInfo
 	bool Disabled() { return enabled == 0; }
 	bool Full() { return enabled == heads.size(); }
 };
-
-template<typename Config = DefaultConfig>
-class BasicTodoOperation
-{
-	using RealId = typename Config::RealId;
-	static constexpr RealId NOOP = std::numeric_limits<RealId>::max();
-	static constexpr RealId ID_MASK = std::numeric_limits<RealId>::max() >> 1;
-	static constexpr RealId ON_MASK = std::numeric_limits<RealId>::max() ^ ID_MASK;
-	RealId data_ = NOOP;
-
-public:
-	BasicTodoOperation() = default;
-	BasicTodoOperation(bool on, RealId id) : data_{(on ? ON_MASK : 0) | (id & ID_MASK)} {}
-	explicit BasicTodoOperation(RealId data) : data_{data} {}
-	operator bool() const
-	{
-		return data_ == 0;
-	}
-	bool on() const
-	{
-		return data_ & ON_MASK;
-	}
-	uint32_t id() const
-	{
-		return data_ & ID_MASK;
-	}
-	static BasicTodoOperation<Config> noop()
-	{
-		return BasicTodoOperation<Config>{NOOP};
-	}
-};
+#endif
 
 template<typename Config = DefaultConfig>
 class BasicWeightUpdater
@@ -215,6 +141,7 @@ public:
 		return real_count * Config::MaxWeight * segments_per_weight;
 	}
 
+#if MOVED
 	template<typename RealIter, typename IdIter, typename WeightIter>
 	static std::optional<BasicWeightUpdater> MakeWeightUpdater(
 	        IdIter ids_begin,
@@ -238,7 +165,7 @@ public:
 		for (auto idi = ids_begin; idi != ids_end; ++idi, ++wi)
 		{
 			RealInfo& info = updater.heads_[*idi];
-			info.weight = std::min<typename Config::Weight>(*wi, Config::MaxWeight);
+			info.weight = std::min<typename Config::Weight>(*wi, 100);
 			info.enabled = (info.weight) * segments_per_weight;
 			updater.total_weight_ += info.weight;
 			if (!info.Disabled())
@@ -310,8 +237,10 @@ public:
 		//           << "\n";
 		return updater;
 	}
+#endif
 
 private:
+#if MOVED
 	void Rebalance(Index target)
 	{
 		std::vector<RealId> low;
@@ -359,8 +288,10 @@ private:
 			}
 		}
 	}
+#endif
 
 public:
+#if MOVED
 	template<typename IdIter, typename WeightIter>
 	BasicPatch<Config> Update(IdIter ids_begin, IdIter ids_end, WeightIter weights_begin)
 	{
@@ -415,68 +346,76 @@ public:
 		return patch;
 	}
 
-	inline double Deviation(RealId id)
+	void FixSeam(RealId* lookup, std::vector<bool>& enabled)
 	{
-		if (heads_.at(id).weight == 0)
+		const RealId old = lookup[0];
+		const RealId last = lookup[lookup_size_ - 1];
+		if (last != old)
 		{
-			return 0.0;
+			Index i = 0;
+			for (; !enabled[i]; ++i)
+			{
+				lookup[i] = last;
+			}
+			track[old] -= i;
+			track[last] += i;
 		}
-		//std::size_t target = heads_.at(id).weight * lookup_size_ / total_weight_;
-		return static_cast<double>(track.at(id) * total_weight_) /
-		               (heads_.at(id).weight * static_cast<std::uint64_t>(lookup_size_)) -
-		       1;
 	}
+	// Doesn't handle ring wrap-around
+	void EnableDirty(RealId* lookup, std::vector<bool>& enabled, const Index pos, const RealId id)
+	{
+		enabled[pos] = true;
+		const RealId old = lookup[pos];
+		lookup[pos] = id;
+		Index i = pos + 1;
+		for (; !enabled[i]; ++i)
+		{
+			lookup[i] = id;
+		}
 
+		const Index l = i - pos;
+		track[old] -= l;
+		track[id] += l;
+	}
+	// Doesn't handle ring wrap-around
+	void DisableDirty(RealId* lookup, std::vector<bool>& enabled, const Index pos, const RealId id)
+	{
+		const RealId old = lookup[pos];
+		enabled[pos] = false;
+		const RealId tint = lookup[PrevRingPosition(lookup_size_, pos)];
+		Index i = pos;
+		for (; !enabled[i]; ++i)
+		{
+			lookup[i] = tint;
+		}
+
+		const Index l = i - pos;
+		track[old] -= l;
+		track[tint] += l;
+	}
+#endif
+
+#if MOVED
 	void Adjust(RealId* lookup, std::vector<bool>& enabled)
 	{
-		std::vector<RealId> ids;
-		ids.resize(heads_.size());
-		std::transform(heads_.begin(), heads_.end(), ids.begin(), [](const auto& p) { return p.first; });
-		std::sort(ids.begin(), ids.end(), [this](RealId a, RealId b) { return std::abs(Deviation(a)) > std::abs(Deviation(b)); });
-
-		double tolerance = 0.1;
-		for (auto id : ids)
+		if (total_weight_ == 0)
 		{
-			if (std::abs(Deviation(id)) < tolerance)
+			return;
+		}
+
+		for (auto& [id, info] : heads_)
+		{
+			if (info.weight == 0)
 			{
-				return;
+				continue;
 			}
+			const auto tolerance = 0.1;
+			const Index target = static_cast<std::size_t>(info.weight) * lookup_size_ / total_weight_;
 
-			while (Deviation(id) > tolerance)
-			{
-				auto opt = heads_[id].DisableOne();
-				if (!opt)
-				{
-					break;
-				}
+			const Index& cells = track.at(id);
 
-				Index i = opt.value();
-				RealId old = lookup[i];
-				enabled[i] = false;
-				RealId tint = lookup[PrevRingPosition(lookup_size_, i)];
-				for (; !enabled[i]; ++i)
-				{
-					lookup[i] = tint;
-				}
-
-				const Index l = i - opt.value();
-				track[old] -= l;
-				track[tint] += l;
-
-				if (lookup[lookup_size_ - 1] != lookup[0])
-				{
-					Index i = 0;
-					RealId tint = lookup[lookup_size_ - 1];
-					for (; !enabled[i]; ++i)
-					{
-						lookup[i] = tint;
-					}
-					track[old] -= i;
-					track[tint] += i;
-				}
-			}
-
-			while (Deviation(id) < -tolerance)
+			const Index low = target * (1.0 - tolerance);
+			while (cells < low)
 			{
 				auto opt = heads_[id].EnableOne();
 				if (!opt)
@@ -484,32 +423,39 @@ public:
 					break;
 				}
 
-				enabled[opt.value()] = true;
-				lookup[opt.value()] = id;
-				Index i = opt.value() + 1;
-				RealId old = lookup[i];
-				for (; !enabled[i]; ++i)
+				EnableDirty(lookup, enabled, opt.value(), id);
+
+				FixSeam(lookup, enabled);
+			}
+		}
+
+		for (auto& [id, info] : heads_)
+		{
+			if (info.weight == 0)
+			{
+				continue;
+			}
+			const auto tolerance = 0.1;
+			const Index target = static_cast<std::size_t>(info.weight) * lookup_size_ / total_weight_;
+
+			const Index& cells = track.at(id);
+
+			const Index high = target * (1.0 + tolerance);
+			while (cells > high)
+			{
+				auto opt = heads_[id].DisableOne();
+				if (!opt)
 				{
-					lookup[i] = id;
+					break;
 				}
 
-				const Index l = i - opt.value();
-				track[old] -= l;
-				track[id] += l;
+				DisableDirty(lookup, enabled, opt.value(), id);
 
-				if (lookup[lookup_size_ - 1] != lookup[0])
-				{
-					Index i = 0;
-					for (; !enabled[i]; ++i)
-					{
-						lookup[i] = id;
-					}
-					track[old] -= i;
-					track[id] += i;
-				}
+				FixSeam(lookup, enabled);
 			}
 		}
 	}
+#endif
 
 	static bool Valid(RealId id)
 	{
@@ -573,8 +519,6 @@ public:
 
 using WeightUpdater = BasicWeightUpdater<DefaultConfig>;
 using Patch = BasicPatch<DefaultConfig>;
-using TodoOperation = BasicTodoOperation<DefaultConfig>;
-using Todo = std::vector<TodoOperation>;
 
 template<typename RealIter, typename IdIter, typename WeightIter>
 std::optional<WeightUpdater> MakeWeightUpdater(

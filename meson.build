@@ -5,4 +5,4 @@ project('chash', 'cpp', default_options: [
 #add_global_arguments(['-Ofast'], language : 'cpp')
 
 subdir('lib')
-#subdir('demo')
+subdir('demo')
