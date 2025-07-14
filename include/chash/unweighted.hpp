@@ -6,7 +6,7 @@
 #include <random>
 #include <vector>
 
-#include "hash.hpp"
+#include <chash/hash.hpp>
 
 namespace chash
 {

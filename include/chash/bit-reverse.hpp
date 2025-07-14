@@ -1,6 +1,8 @@
 #pragma once
 #include <cstdint>
 
+namespace chash
+{
 inline constexpr std::uint8_t BitReverse(std::uint8_t x)
 {
 	x = ((x & 0x55) << 1) | ((x & 0xAA) >> 1);
@@ -40,3 +42,5 @@ inline constexpr std::uint32_t ReverseBits(std::uint8_t bits, std::uint32_t x)
 	auto y = BitReverse(x) >> (32 - bits);
 	return y;
 }
+
+} // namespace chash

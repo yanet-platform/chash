@@ -1,7 +1,6 @@
-sources = files('main.cpp',
-				'../3rdparty/Crc32.cpp')
+sources = files('main.cpp')
 
 dependencies = []
 dependencies += chash_dep
 
-executable('demo', sources, dependencies: dependencies)
+executable('demo', sources, dependencies: dependencies, cpp_args : ['-g', '-O0'])
