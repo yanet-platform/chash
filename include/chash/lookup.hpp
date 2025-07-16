@@ -8,6 +8,7 @@
 namespace chash
 {
 
+template<typename RealId>
 class Lookup
 {
 	std::vector<bool> enabled_;
@@ -16,8 +17,8 @@ class Lookup
 
 	void EnableDirty(Index idx, RealId id);
 	void DisableDirty(Index idx);
-	void EnableDirty(std::vector<Patch::on_t>::const_iterator begin,
-	                 std::vector<Patch::on_t>::const_iterator end);
+	void EnableDirty(typename std::vector<typename Patch<RealId>::on_t>::const_iterator begin,
+	                 typename std::vector<typename Patch<RealId>::on_t>::const_iterator end);
 	void DisableDirty(std::vector<Index>::const_iterator begin,
 	                  std::vector<Index>::const_iterator end);
 	void FixSeam();
@@ -25,7 +26,7 @@ public:
 	Lookup(RealId* buf, Index size);
 	const RealId* data() const;
 	Index size() const;
-	void Update(Patch& patch);
+	void Update(Patch<RealId>& patch);
 	void Enable(Index pos, RealId id);
 	void Disable(Index pos);
 	void DisablingUpdate(const std::vector<Index>& off);

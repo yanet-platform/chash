@@ -1,14 +1,15 @@
 #pragma once
 #include <chash/state.hpp>
 
-#include <chash/unweighted.hpp>
 #include <chash/bit-reverse.hpp>
+#include <chash/unweighted.hpp>
 
 namespace chash
 {
 
+template<typename RealId>
 template<typename RealIter, typename IdIter, typename WeightIter>
-std::optional<State> State::Make(IdIter ids_begin,
+std::optional<State<RealId>> State<RealId>::Make(IdIter ids_begin,
                                  IdIter ids_end,
                                  RealIter reals_begin,
                                  WeightIter weights_begin,
@@ -26,7 +27,7 @@ std::optional<State> State::Make(IdIter ids_begin,
 	auto wi = weights_begin;
 	for (auto idi = ids_begin; idi != ids_end; ++idi, ++wi)
 	{
-		Real& info = updater.reals_[*idi];
+		Real<RealId>& info = updater.reals_[*idi];
 		info.requested = updater.segments_per_weight_ * std::min<Weight>(*wi, MAX_WEIGHT);
 		info.enabled = info.requested;
 		updater.total_weight_ += info.enabled;
@@ -86,7 +87,8 @@ std::optional<State> State::Make(IdIter ids_begin,
 	return updater;
 }
 
-void State::Rebalance(Index target)
+template<typename RealId>
+void State<RealId>::Rebalance(Index target)
 {
 	std::vector<RealId> low;
 	std::vector<RealId> high;
@@ -134,10 +136,11 @@ void State::Rebalance(Index target)
 	}
 }
 
+template<typename RealId>
 template<typename IdIter, typename WeightIter>
-Patch State::Update(IdIter ids_begin, IdIter ids_end, WeightIter weights_begin)
+Patch<RealId> State<RealId>::Update(IdIter ids_begin, IdIter ids_end, WeightIter weights_begin)
 {
-	Patch patch;
+	Patch<RealId> patch;
 	auto wi = weights_begin;
 	for (auto idi = ids_begin; idi != ids_end; ++idi, ++wi)
 	{
@@ -146,14 +149,14 @@ Patch State::Update(IdIter ids_begin, IdIter ids_end, WeightIter weights_begin)
 			continue;
 		}
 		auto& info = reals_.at(*idi);
-		if (info.weight == *wi)
+		if (info.requested == *wi)
 		{
 			continue;
 		}
 		total_weight_ += *wi * segments_per_weight_;
 		total_weight_ -= info.enabled;
 
-		if (info.weight == 0)
+		if (info.requested == 0)
 		{
 			++reals_active_;
 		}
@@ -188,8 +191,9 @@ Patch State::Update(IdIter ids_begin, IdIter ids_end, WeightIter weights_begin)
 	return patch;
 }
 
+template<typename RealId>
 template<typename enable_t, typename disable_t>
-void State::Adjust(const std::unordered_map<RealId, Index>& stats, enable_t&& enable, disable_t&& disable)
+void State<RealId>::Adjust(const std::unordered_map<RealId, Index>& stats, enable_t&& enable, disable_t&& disable)
 {
 	if (total_weight_ == 0)
 	{
@@ -245,12 +249,16 @@ void State::Adjust(const std::unordered_map<RealId, Index>& stats, enable_t&& en
 	}
 }
 
-bool State::Enabled() const{
+template<typename RealId>
+bool State<RealId>::Enabled() const
+{
 	return !Disabled();
 }
-bool State::Disabled() const{
+
+template<typename RealId>
+bool State<RealId>::Disabled() const
+{
 	return reals_active_ == 0;
 }
-
 
 } // namespace chash

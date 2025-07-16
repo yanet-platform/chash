@@ -5,27 +5,30 @@
 namespace chash
 {
 
-Lookup::Lookup(RealId* buf, Index size) : enabled_(size + 1, false), data_{buf}
+template<typename RealId>
+Lookup<RealId>::Lookup(RealId* buf, Index size) : enabled_(size + 1, false), data_{buf}
 {
 	enabled_.back() = true;
 }
 
-void Lookup::DisablingUpdate(const std::vector<Index>& off)
+template<typename RealId>
+void Lookup<RealId>::DisablingUpdate(const std::vector<Index>& off)
 {
 	for (auto pos : off)
 	{
 		enabled_[pos] = false;
 	}
-	if (data_[0] != InvalId)
+	if (data_[0] != InvalId<RealId>)
 	{
-		std::fill(data_, data_ + size(), InvalId);
+		std::fill(data_, data_ + size(), InvalId<RealId>);
 		stat_.clear();
-		stat_[InvalId] = size();
+		stat_[InvalId<RealId>] = size();
 	}
 	return;
 }
 
-void Lookup::Update(Patch& patch)
+template<typename RealId>
+void Lookup<RealId>::Update(Patch<RealId>& patch)
 {
 	const auto& [on, off, offstart] = patch;
 
@@ -50,7 +53,8 @@ void Lookup::Update(Patch& patch)
 }
 
 // Doesn't handle ring wrap-around
-void Lookup::EnableDirty(Index idx, RealId id)
+template<typename RealId>
+void Lookup<RealId>::EnableDirty(Index idx, RealId id)
 {
 	enabled_[idx] = true;
 	const RealId old = data_[idx];
@@ -67,7 +71,8 @@ void Lookup::EnableDirty(Index idx, RealId id)
 }
 
 // Doesn't handle ring wrap-around
-void Lookup::DisableDirty(const Index pos)
+template<typename RealId>
+void Lookup<RealId>::DisableDirty(const Index pos)
 {
 	const RealId old = data_[pos];
 	enabled_[pos] = false;
@@ -83,8 +88,9 @@ void Lookup::DisableDirty(const Index pos)
 	stat_[tint] += l;
 }
 
-void Lookup::EnableDirty(std::vector<Patch::on_t>::const_iterator begin,
-                         std::vector<Patch::on_t>::const_iterator end)
+template<typename RealId>
+void Lookup<RealId>::EnableDirty(typename std::vector<typename Patch<RealId>::on_t>::const_iterator begin,
+                         typename std::vector<typename Patch<RealId>::on_t>::const_iterator end)
 {
 	for (auto hit = begin; hit != end; ++hit)
 	{
@@ -92,7 +98,8 @@ void Lookup::EnableDirty(std::vector<Patch::on_t>::const_iterator begin,
 	}
 }
 
-void Lookup::DisableDirty(std::vector<Index>::const_iterator begin,
+template<typename RealId>
+void Lookup<RealId>::DisableDirty(std::vector<Index>::const_iterator begin,
                           std::vector<Index>::const_iterator end)
 {
 	for (auto hit = begin; hit != end; ++hit)
@@ -101,7 +108,8 @@ void Lookup::DisableDirty(std::vector<Index>::const_iterator begin,
 	}
 }
 
-void Lookup::FixSeam()
+template<typename RealId>
+void Lookup<RealId>::FixSeam()
 {
 	const RealId old = data_[0];
 	const RealId last = data_[size() - 1];
@@ -117,28 +125,34 @@ void Lookup::FixSeam()
 	}
 }
 
-void Lookup::Enable(Index pos, RealId id)
+template<typename RealId>
+void Lookup<RealId>::Enable(Index pos, RealId id)
 {
 	EnableDirty(pos, id);
 	FixSeam();
 }
-void Lookup::Disable(Index pos)
+
+template<typename RealId>
+void Lookup<RealId>::Disable(Index pos)
 {
 	DisableDirty(pos);
 	FixSeam();
 }
 
-const RealId* Lookup::data() const
+template<typename RealId>
+const RealId* Lookup<RealId>::data() const
 {
 	return data_;
 }
 
-Index Lookup::size() const
+template<typename RealId>
+Index Lookup<RealId>::size() const
 {
 	return enabled_.size() - 1;
 }
 
-const std::unordered_map<RealId, Index>& Lookup::Stats() const
+template<typename RealId>
+const std::unordered_map<RealId, Index>& Lookup<RealId>::Stats() const
 {
 	return stat_;
 }

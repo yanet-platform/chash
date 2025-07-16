@@ -5,6 +5,7 @@
 namespace chash
 {
 
+template<typename RealId>
 struct Patch
 {
 	using on_t = std::pair<Index, RealId>;

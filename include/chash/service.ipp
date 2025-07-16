@@ -4,8 +4,9 @@
 namespace chash
 {
 
+template<typename RealId>
 template<typename RealIter, typename IdIter, typename WeightIter>
-std::optional<Service> Service::Make(RealId* buf,
+std::optional<Service<RealId>> Service<RealId>::Make(RealId* buf,
                                      Index size,
                                      IdIter ids_begin,
                                      IdIter ids_end,
@@ -17,7 +18,7 @@ std::optional<Service> Service::Make(RealId* buf,
 	{
 		return std::nullopt;
 	}
-	std::optional<State> state = State::Make(
+	std::optional<State<RealId>> state = State<RealId>::Make(
 	        ids_begin, ids_end, reals_begin, weights_begin, SIDE_RINGS_COUNT, size);
 
 	if (!state)
@@ -31,11 +32,13 @@ std::optional<Service> Service::Make(RealId* buf,
 	return svc;
 }
 
-Service::Service(State&& state, Lookup&& lookup) :
+template<typename RealId>
+Service<RealId>::Service(State<RealId>&& state, Lookup<RealId>&& lookup) :
         state_{std::move(state)}, lookup_{std::move(lookup)} {}
 
+template<typename RealId>
 template<typename IdIter, typename WeightIter>
-void Service::Update(IdIter ids_begin, IdIter ids_end, WeightIter weights_begin)
+void Service<RealId>::Update(IdIter ids_begin, IdIter ids_end, WeightIter weights_begin)
 {
 	auto patch = state_.Update(ids_begin, ids_end, weights_begin);
 	if (state_.Enabled())
@@ -48,17 +51,20 @@ void Service::Update(IdIter ids_begin, IdIter ids_end, WeightIter weights_begin)
 	}
 }
 
-void Service::Adjust()
+template<typename RealId>
+void Service<RealId>::Adjust()
 {
 	state_.Adjust(lookup_.Stats(), [&](Index pos, RealId id) { lookup_.Enable(pos, id); }, [&](Index pos) { lookup_.Disable(pos); });
 }
 
-const RealId* Service::data() const
+template<typename RealId>
+const RealId* Service<RealId>::data() const
 {
 	return lookup_.data();
 }
 
-Index Service::size() const
+template<typename RealId>
+Index Service<RealId>::size() const
 {
 	return lookup_.size();
 }

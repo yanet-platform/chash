@@ -3,7 +3,9 @@
 
 namespace chash
 {
-std::optional<Index> Real::EnableOne()
+
+template<typename RealId>
+std::optional<Index> Real<RealId>::EnableOne()
 {
 	if (enabled == heads.size())
 	{
@@ -12,7 +14,8 @@ std::optional<Index> Real::EnableOne()
 	return heads[enabled++];
 }
 
-std::optional<Index> Real::DisableOne()
+template<typename RealId>
+std::optional<Index> Real<RealId>::DisableOne()
 {
 	if (enabled == 0)
 	{
@@ -21,7 +24,8 @@ std::optional<Index> Real::DisableOne()
 	return heads[--enabled];
 }
 
-void Real::Update(Patch& patch, RealId id, Index enabled_request)
+template<typename RealId>
+void Real<RealId>::Update(Patch<RealId>& patch, RealId id, Index enabled_request)
 {
 	auto l = heads.begin() + enabled;
 	requested = std::min<Index>(enabled_request, heads.size());
@@ -41,22 +45,26 @@ void Real::Update(Patch& patch, RealId id, Index enabled_request)
 	enabled = requested;
 }
 
-auto Real::cbegin()
+template<typename RealId>
+auto Real<RealId>::cbegin()
 {
 	return heads.cbegin();
 }
 
-auto Real::cend()
+template<typename RealId>
+auto Real<RealId>::cend()
 {
 	return heads.cbegin() + enabled;
 }
 
-bool Real::Disabled()
+template<typename RealId>
+bool Real<RealId>::Disabled()
 {
 	return enabled == 0;
 }
 
-bool Real::Full()
+template<typename RealId>
+bool Real<RealId>::Full()
 {
 	return enabled == heads.size();
 }

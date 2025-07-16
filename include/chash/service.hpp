@@ -6,11 +6,12 @@
 namespace chash
 {
 
+template<typename RealId = std::uint32_t>
 class Service
 {
-	State state_;
-	Lookup lookup_;
-	Service(State&& state, Lookup&& lookup);
+	State<RealId> state_;
+	Lookup<RealId> lookup_;
+	Service(State<RealId>&& state, Lookup<RealId>&& lookup);
 
 public:
 	template<typename RealIter, typename IdIter, typename WeightIter>

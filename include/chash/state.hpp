@@ -19,9 +19,10 @@ public:
 };
 #endif
 
+template<typename RealId>
 class State
 {
-	std::unordered_map<RealId, Real> reals_;
+	std::unordered_map<RealId, Real<RealId>> reals_;
 	const Index lookup_size_;
 	const Index segments_per_weight_ = DEFAULT_SEGMENTS_PER_WEIGHT;
 	Index reals_active_ = 0;
@@ -42,10 +43,9 @@ public:
 	        Index lookup_size);
 
 	template<typename IdIter, typename WeightIter>
-	Patch Update(IdIter ids_begin, IdIter ids_end, WeightIter weights_begin);
+	Patch<RealId> Update(IdIter ids_begin, IdIter ids_end, WeightIter weights_begin);
 	template <typename enable_t, typename disable_t>
 	void Adjust(const std::unordered_map<RealId, Index>& stats, enable_t&& enable, disable_t&& disable);
-	// TODO
 #if INDEPENDENCE
 	SegmentIterator cbegin();
 	SegmentIterator cend();

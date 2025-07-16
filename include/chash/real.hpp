@@ -8,6 +8,7 @@
 namespace chash
 {
 
+template<typename RealId>
 struct Real
 {
 	std::vector<Index> heads;
@@ -17,7 +18,7 @@ struct Real
 	std::optional<Index> EnableOne();
 	std::optional<Index> DisableOne();
 
-	void Update(Patch& patch, RealId id, Index enabled_request);
+	void Update(Patch<RealId>& patch, RealId id, Index enabled_request);
 	auto cbegin();
 	auto cend();
 
