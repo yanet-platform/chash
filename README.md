@@ -40,4 +40,19 @@ excess segments are distributed between lacking. This is done inconsistently,
 but effect of this is miniscule and ignored.
 
 #### Weights
-During lookup markup we composed a sequence of segments for each real. 
+During lookup markup we composed a sequence of segments for each real. Real is
+said to have weight 100 whene all segments in sequence are turned on. Turning off 
+all the sequence segments disables the real. Higher the index in the segments
+sequence the higher the real weight corresponding to it.
+
+##### Switching segment off
+To turn the segment off it's head is marked disabled and and lookup cells
+corresponding to it are set to id of segment that is to immediate left of head.
+Switched of segment is considered part of the segment to emmediate left.
+
+##### Switching segment on
+Head is marked enabled and all cells from head to next enabled head to the right
+are considered part of this segment
+
+
+ 
