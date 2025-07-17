@@ -54,5 +54,13 @@ Switched of segment is considered part of the segment to emmediate left.
 Head is marked enabled and all cells from head to next enabled head to the right
 are considered part of this segment
 
+#### Adjusting
+In case of radically different weights (for example most reals assigned to 
+weight 1 and one to weight 100) disabled segments joined to segments of reals with
+low weights introduce a decrepency. Effective weights of these reals are substantially
+different from administrative.
+
+This is mitigated by adjusting weights from administrative ones.
+
 
  
