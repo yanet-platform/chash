@@ -4,20 +4,10 @@
 #include <chash/config.hpp>
 #include <chash/patch.hpp>
 #include <chash/real.hpp>
+#include <chash/segment_iterator.hpp>
 
 namespace chash
 {
-
-#if INDEPENDENCE
-class SegmentIterator
-{
-	std::unordered_map<RealId, RealInfo>::const_iterator rit_;
-	std::vector<Index>::const_iterator sit_;
-
-public:
-	operator++
-};
-#endif
 
 template<typename RealId>
 class State
@@ -44,14 +34,13 @@ public:
 
 	template<typename IdIter, typename WeightIter>
 	Patch<RealId> Update(IdIter ids_begin, IdIter ids_end, WeightIter weights_begin);
-	template <typename enable_t, typename disable_t>
+	template<typename enable_t, typename disable_t>
 	void Adjust(const std::unordered_map<RealId, Index>& stats, enable_t&& enable, disable_t&& disable);
-#if INDEPENDENCE
-	SegmentIterator cbegin();
-	SegmentIterator cend();
-#endif
 	bool Enabled() const;
 	bool Disabled() const;
+
+	SegmentIterator<RealId> cbegin() const;
+	SegmentIterator<RealId> cend() const;
 };
 
 } // namespace chash

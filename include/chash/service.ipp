@@ -27,8 +27,10 @@ std::optional<Service<RealId>> Service<RealId>::Make(RealId* buf,
 	}
 
 	Lookup lookup(buf, size);
+	lookup.Init(state->cbegin(), state->cend());
 
 	Service svc(std::move(state.value()), std::move(lookup));
+	svc.Adjust();
 	return svc;
 }
 

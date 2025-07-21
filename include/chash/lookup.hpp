@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <chash/patch.hpp>
+#include <chash/segment_iterator.hpp>
 
 namespace chash
 {
@@ -24,6 +25,7 @@ class Lookup
 	void FixSeam();
 public:
 	Lookup(RealId* buf, Index size);
+	void Init(SegmentIterator<RealId> begin, SegmentIterator<RealId> end);
 	const RealId* data() const;
 	Index size() const;
 	void Update(Patch<RealId>& patch);

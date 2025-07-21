@@ -46,25 +46,27 @@ void Real<RealId>::Update(Patch<RealId>& patch, RealId id, Index enabled_request
 }
 
 template<typename RealId>
-auto Real<RealId>::cbegin()
+std::vector<Index>::const_iterator Real<RealId>::cbegin() const
 {
 	return heads.cbegin();
 }
 
 template<typename RealId>
-auto Real<RealId>::cend()
+std::vector<Index>::const_iterator Real<RealId>::cend() const
 {
-	return heads.cbegin() + enabled;
+	std::vector<Index>::const_iterator tmp = heads.cbegin();
+	std::advance(tmp, enabled);
+	return tmp;
 }
 
 template<typename RealId>
-bool Real<RealId>::Disabled()
+bool Real<RealId>::Disabled() const
 {
 	return enabled == 0;
 }
 
 template<typename RealId>
-bool Real<RealId>::Full()
+bool Real<RealId>::Full() const
 {
 	return enabled == heads.size();
 }

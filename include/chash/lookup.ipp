@@ -12,6 +12,34 @@ Lookup<RealId>::Lookup(RealId* buf, Index size) : enabled_(size + 1, false), dat
 }
 
 template<typename RealId>
+void Lookup<RealId>::Init(SegmentIterator<RealId> begin, SegmentIterator<RealId> end)
+{
+	std::fill(data_, data_ + size(), InvalId<RealId>);
+	stat_.clear();
+
+	for (auto it = begin; it != end; ++it)
+	{
+		data_[it.pos()] = it.id();
+		enabled_[it.pos()] = true;
+	}
+
+	RealId tint = data_[0];
+	Index prev {};
+	for (Index idx = 0; idx < size(); ++idx)
+	{
+		if (enabled_[idx])
+		{
+			stat_[tint] += idx - prev;
+			tint = data_[idx];
+			prev = idx;
+		}
+		data_[idx] = tint;
+	}
+
+	FixSeam();
+}
+
+template<typename RealId>
 void Lookup<RealId>::DisablingUpdate(const std::vector<Index>& off)
 {
 	for (auto pos : off)

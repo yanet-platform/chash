@@ -149,19 +149,20 @@ Patch<RealId> State<RealId>::Update(IdIter ids_begin, IdIter ids_end, WeightIter
 			continue;
 		}
 		auto& info = reals_.at(*idi);
-		if (info.requested == *wi)
+		auto requested = *wi * segments_per_weight_;
+		if (info.requested == requested)
 		{
 			continue;
 		}
-		total_weight_ += *wi * segments_per_weight_;
-		total_weight_ -= info.enabled;
+		total_weight_ += requested;
+		total_weight_ -= info.requested;
 
 		if (info.requested == 0)
 		{
 			++reals_active_;
 		}
 
-		info.Update(patch, *idi, *wi * segments_per_weight_);
+		info.Update(patch, *idi, requested);
 
 		if (*wi == 0)
 		{
@@ -200,13 +201,15 @@ void State<RealId>::Adjust(const std::unordered_map<RealId, Index>& stats, enabl
 		return;
 	}
 
+
+	const auto tolerance = 0.1;
+
 	for (auto& [id, info] : reals_)
 	{
 		if (info.requested == 0)
 		{
 			continue;
 		}
-		const auto tolerance = 0.1;
 		const Index target = static_cast<std::size_t>(info.requested) * lookup_size_ / total_weight_;
 
 		const Index& cells = stats.at(id);
@@ -230,7 +233,6 @@ void State<RealId>::Adjust(const std::unordered_map<RealId, Index>& stats, enabl
 		{
 			continue;
 		}
-		const auto tolerance = 0.1;
 		const Index target = static_cast<std::size_t>(info.requested) * lookup_size_ / total_weight_;
 
 		const Index& cells = stats.at(id);
@@ -259,6 +261,18 @@ template<typename RealId>
 bool State<RealId>::Disabled() const
 {
 	return reals_active_ == 0;
+}
+
+template<typename RealId>
+SegmentIterator<RealId> State<RealId>::cbegin() const
+{
+	return SegmentIterator<RealId>(reals_.cbegin(), reals_.cend());
+}
+
+template<typename RealId>
+SegmentIterator<RealId> State<RealId>::cend() const
+{
+	return SegmentIterator<RealId>(reals_.cend(), reals_.cend());
 }
 
 } // namespace chash

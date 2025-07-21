@@ -19,11 +19,11 @@ struct Real
 	std::optional<Index> DisableOne();
 
 	void Update(Patch<RealId>& patch, RealId id, Index enabled_request);
-	auto cbegin();
-	auto cend();
+	std::vector<Index>::const_iterator cbegin() const;
+	std::vector<Index>::const_iterator cend() const;
 
-	bool Disabled();
-	bool Full();
+	bool Disabled() const;
+	bool Full() const;
 };
 
 } // namespace chash
