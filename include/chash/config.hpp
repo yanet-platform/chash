@@ -11,6 +11,7 @@ inline constexpr Weight MAX_WEIGHT = 100;
 inline constexpr auto RNG_SEED = 42;
 inline constexpr auto SIDE_RINGS_COUNT = 100;
 inline constexpr auto DEFAULT_SEGMENTS_PER_WEIGHT = 16;
+inline constexpr auto UNWEIGHTED_SIZE = 8096;
 
 template<typename RealId>
 inline constexpr RealId InvalId = std::numeric_limits<RealId>::max();

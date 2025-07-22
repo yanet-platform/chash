@@ -42,11 +42,9 @@ std::optional<State<RealId>> State<RealId>::Make(IdIter ids_begin,
 	std::mt19937 seq(RNG_SEED);
 	for (std::size_t i = 0; i < side_rings_count; ++i)
 	{
-		auto salt = seq();
-		//			unweighted.emplace_back(Unweighted<RealId>::Make(
-		//			        cnt * Config::UnweightedMultiplier, reals, ids, cnt, salt));
+		Salt salt = seq();
 		unweighted.emplace_back(Unweighted<RealId>::Make(
-		        8096, ids_begin, ids_end, reals_begin, salt));
+		        UNWEIGHTED_SIZE, ids_begin, ids_end, reals_begin, salt));
 	}
 
 	std::size_t cnt = std::distance(ids_begin, ids_end);
@@ -70,7 +68,7 @@ std::optional<State<RealId>> State<RealId>::Make(IdIter ids_begin,
 		}
 
 		RealId rid = unweighted[u].Match(seq_cache.at(distributed));
-		if (updater.reals_.find(rid) != updater.reals_.end())
+		if (updater.reals_.find(rid) == updater.reals_.end())
 		{
 			updater.reals_[rid].heads.reserve((MAX_WEIGHT + 1) * updater.segments_per_weight_);
 		}
@@ -178,7 +176,6 @@ Patch<RealId> State<RealId>::Update(IdIter ids_begin, IdIter ids_end, WeightIter
 	{
 		for (const auto& [_, info] : reals_)
 		{
-			GCC_BUG_UNUSED(_);
 			if (info.enabled != 0)
 			{
 				patch.offstart = info.heads.front();
